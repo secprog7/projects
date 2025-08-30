@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
+
+// --- Production-Ready API URL ---
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 
 // --- Helper function to format image URLs ---
 const getImageUrl = (url) => {
@@ -8,7 +12,8 @@ const getImageUrl = (url) => {
   if (url.startsWith('http')) {
     return url;
   }
-  return `http://localhost:5000${url}`;
+  // Use the API_URL for constructing local paths in production
+  return `${API_URL}${url}`;
 };
 
 function App() {
@@ -42,59 +47,59 @@ function App() {
 
 
   // --- Data Fetching ---
-
-  const fetchBooks = async () => {
+  // FIX: Wrapped fetch functions in useCallback to stabilize them for useEffect dependencies
+  const fetchBooks = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (filterGenre !== 'All') params.append('genre', filterGenre);
       if (searchTerm) params.append('q', searchTerm);
       
-      const response = await fetch(`/api/books?${params.toString()}`);
+      const response = await fetch(`${API_URL}/api/books?${params.toString()}`);
       if (!response.ok) throw new Error('Network response was not ok');
       const data = await response.json();
       setBooks(data);
     } catch (error) {
       console.error("Failed to fetch books:", error);
     }
-  };
+  }, [filterGenre, searchTerm]);
   
-  const fetchLoans = async () => {
+  const fetchLoans = useCallback(async () => {
       try {
-          const response = await fetch('/api/loans');
+          const response = await fetch(`${API_URL}/api/loans`);
           if (!response.ok) throw new Error('Failed to fetch loans');
           const data = await response.json();
           setLoans(data);
       } catch (error) {
           console.error("Failed to fetch loans:", error);
       }
-  };
+  }, []);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
-        const response = await fetch('/api/analytics/stats');
+        const response = await fetch(`${API_URL}/api/analytics/stats`);
         if (!response.ok) throw new Error('Failed to fetch stats');
         const data = await response.json();
         setStats(data);
     } catch (error) {
         console.error("Failed to fetch stats:", error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchBooks();
     fetchLoans();
     fetchStats();
-  }, []);
+  }, [fetchBooks, fetchLoans, fetchStats]); // FIX: Added dependencies to satisfy exhaustive-deps rule
 
   useEffect(() => {
     const timerId = setTimeout(() => { if (page === 'library') fetchBooks(); }, 300);
     return () => clearTimeout(timerId);
-  }, [filterGenre, searchTerm, page]);
+  }, [filterGenre, searchTerm, page, fetchBooks]); // FIX: Added fetchBooks dependency
 
   useEffect(() => {
     const fetchAllBooksForGenres = async () => {
       try {
-        const response = await fetch('/api/books');
+        const response = await fetch(`${API_URL}/api/books`);
         if (!response.ok) throw new Error('Failed to fetch all books for genres');
         const allBooks = await response.json();
         const allGenres = new Set(allBooks.map(book => book.genre).filter(Boolean));
@@ -132,7 +137,7 @@ function App() {
     }
 
     try {
-      const response = await fetch('/api/books', {
+      const response = await fetch(`${API_URL}/api/books`, {
         method: 'POST',
         body: formData,
       });
@@ -152,7 +157,7 @@ function App() {
   const handleLoanSubmit = async (e) => {
       e.preventDefault();
       try {
-          const response = await fetch('/api/loans', {
+          const response = await fetch(`${API_URL}/api/loans`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -180,7 +185,7 @@ function App() {
   const handleLookup = async (isbn) => {
     if (!isbn) return;
     try {
-      const response = await fetch(`/api/lookup?isbn=${isbn}`);
+      const response = await fetch(`${API_URL}/api/lookup?isbn=${isbn}`);
       if (!response.ok) throw new Error('Book not found');
       const data = await response.json();
       // Pre-fill the add form with the fetched data and open the modal
@@ -195,7 +200,7 @@ function App() {
   const handleDelete = async (bookId) => {
     if (window.confirm('Are you sure you want to delete this book? This will also remove all associated loan and checkout records.')) {
       try {
-        const response = await fetch(`/api/books/${bookId}`, { method: 'DELETE' });
+        const response = await fetch(`${API_URL}/api/books/${bookId}`, { method: 'DELETE' });
         if (!response.ok) throw new Error('Failed to delete book');
         fetchBooks();
         fetchLoans();
@@ -207,7 +212,7 @@ function App() {
   
   const handleReturn = async (loanId) => {
       try {
-          const response = await fetch(`/api/loans/${loanId}/return`, {
+          const response = await fetch(`${API_URL}/api/loans/${loanId}/return`, {
               method: 'PUT',
           });
           if (!response.ok) throw new Error('Failed to return book');
@@ -220,7 +225,7 @@ function App() {
 
   const handleUpdateBook = async (bookId, updateData) => {
     try {
-      const response = await fetch(`/api/books/${bookId}`, {
+      const response = await fetch(`${API_URL}/api/books/${bookId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
