@@ -27,8 +27,6 @@ function App() {
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // --- FIX: Added missing state for handling the scanned ISBN result ---
-  const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
   const [books, setBooks] = useState([]);
@@ -107,18 +105,6 @@ function App() {
       alert('Could not find a book with that ISBN.');
     }
   }, []);
-
-  // --- FIX: Added useEffect to process the scanned ISBN after the scanner modal closes ---
-  useEffect(() => {
-    if (scannedIsbn) {
-      // Use a small timeout to ensure the scanner modal has fully transitioned out
-      setTimeout(() => {
-        handleLookup(scannedIsbn);
-        setScannedIsbn(null); // Reset after processing
-        setIsProcessingScan(false); // Release the lock
-      }, 100);
-    }
-  }, [scannedIsbn, handleLookup]);
 
 
   useEffect(() => {
@@ -320,6 +306,20 @@ function App() {
     setEditingBook(null);
     setForm({ title: '', author: '', isbn: '', coverImageUrl: '', synopsis: '', genre: '' });
     setCoverImage(null);
+  };
+  
+  // --- FIX: A new, more robust handler for successful scans ---
+  const handleScanSuccess = (scannedText) => {
+    if (isProcessingScan) return; // Prevent multiple triggers
+
+    setIsProcessingScan(true); // Lock to prevent re-scanning
+    setIsScannerOpen(false);  // Immediately close the scanner
+
+    // Use a timeout to ensure the scanner modal has fully closed before proceeding
+    setTimeout(() => {
+        handleLookup(scannedText);
+        setIsProcessingScan(false); // Release the lock
+    }, 300); // 300ms delay for smooth transition
   };
 
   // --- Helper variables for rendering ---
@@ -671,9 +671,7 @@ function App() {
                       
                       const scannedText = result.getText();
                       if (scannedText) {
-                          setIsProcessingScan(true);
-                          setScannedIsbn(scannedText);
-                          setIsScannerOpen(false);
+                          handleScanSuccess(scannedText);
                       }
                   }}
                   onError={(error) => {
