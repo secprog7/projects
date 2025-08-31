@@ -27,6 +27,8 @@ function App() {
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isProcessingScan, setIsProcessingScan] = useState(false);
+  // --- FIX: A new state to reliably handle the result of a scan ---
+  const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
   const [books, setBooks] = useState([]);
@@ -105,6 +107,16 @@ function App() {
       alert('Could not find a book with that ISBN.');
     }
   }, []);
+
+  // --- FIX: A more robust, state-driven approach to handling scan results ---
+  useEffect(() => {
+    if (scannedIsbn) {
+      // This effect triggers ONLY after the scannedIsbn state has been updated.
+      // This ensures the scanner modal is closed before we proceed.
+      handleLookup(scannedIsbn);
+      setScannedIsbn(null); // Reset for the next scan
+    }
+  }, [scannedIsbn, handleLookup]);
 
 
   useEffect(() => {
@@ -308,20 +320,6 @@ function App() {
     setCoverImage(null);
   };
   
-  // --- FIX: A new, more robust handler for successful scans ---
-  const handleScanSuccess = (scannedText) => {
-    if (isProcessingScan) return; // Prevent multiple triggers
-
-    setIsProcessingScan(true); // Lock to prevent re-scanning
-    setIsScannerOpen(false);  // Immediately close the scanner
-
-    // Use a timeout to ensure the scanner modal has fully closed before proceeding
-    setTimeout(() => {
-        handleLookup(scannedText);
-        setIsProcessingScan(false); // Release the lock
-    }, 300); // 300ms delay for smooth transition
-  };
-
   // --- Helper variables for rendering ---
   const activeLoans = loans.filter(loan => loan.status === 'Loaned' || loan.status === 'Overdue');
   const personallyCheckedOutBooks = books.filter(book => book.checkoutDate);
