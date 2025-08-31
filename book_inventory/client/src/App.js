@@ -26,8 +26,8 @@ function App() {
 
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  // --- FIX: Added missing state for handling the scanned ISBN result ---
-  const [scannedIsbn, setScannedIsbn] = useState(null);
+  // --- FIX: State to prevent multiple scan results from being processed ---
+  const [isProcessingScan, setIsProcessingScan] = useState(false);
 
   // Existing States
   const [books, setBooks] = useState([]);
@@ -106,17 +106,6 @@ function App() {
       alert('Could not find a book with that ISBN.');
     }
   }, []);
-
-  // --- FIX: Added useEffect to process the scanned ISBN after the scanner modal closes ---
-  useEffect(() => {
-    if (scannedIsbn) {
-      // Use a small timeout to ensure the scanner modal has fully transitioned out
-      setTimeout(() => {
-        handleLookup(scannedIsbn);
-        setScannedIsbn(null); // Reset after processing
-      }, 100);
-    }
-  }, [scannedIsbn, handleLookup]);
 
 
   useEffect(() => {
@@ -358,7 +347,7 @@ function App() {
                             className="search-input"
                         />
                         <button className="lookup-btn" onClick={() => handleLookup(isbnToLookUp)}>Find</button>
-                        <button className="scan-btn" onClick={() => setIsScannerOpen(true)}>
+                        <button className="scan-btn" onClick={() => { setIsProcessingScan(false); setIsScannerOpen(true); }}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>
                         </button>
                     </div>
@@ -664,9 +653,16 @@ function App() {
           <div className="scanner-modal">
                <Scanner
                   onResult={(result) => {
-                      // --- FIX: Store the result in state and close the modal ---
-                      setScannedIsbn(result.getText());
+                      if (isProcessingScan) return;
+                      
+                      setIsProcessingScan(true);
+                      const scannedText = result.getText();
                       setIsScannerOpen(false);
+
+                      setTimeout(() => {
+                        handleLookup(scannedText);
+                        setIsProcessingScan(false);
+                      }, 200);
                   }}
                   onError={(error) => {
                       console.error(error?.message);
