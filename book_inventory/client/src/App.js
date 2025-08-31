@@ -26,6 +26,8 @@ function App() {
 
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  // --- FIX: State to handle the result of a scan gracefully ---
+  const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
   const [books, setBooks] = useState([]);
@@ -90,6 +92,29 @@ function App() {
         console.error("Failed to fetch stats:", error);
     }
   }, []);
+
+  const handleLookup = useCallback(async (isbn) => {
+    if (!isbn) return;
+    try {
+      const response = await fetch(`${API_URL}/api/lookup?isbn=${isbn}`);
+      if (!response.ok) throw new Error('Book not found');
+      const data = await response.json();
+      setForm(data);
+      setIsAddModalOpen(true);
+      setIsbnToLookUp('');
+    } catch (error) {
+      alert('Could not find a book with that ISBN.');
+    }
+  }, []);
+
+  // --- FIX: useEffect to process the scanned ISBN *after* the scanner modal closes ---
+  useEffect(() => {
+    if (scannedIsbn) {
+      handleLookup(scannedIsbn);
+      setScannedIsbn(null); // Reset after processing
+    }
+  }, [scannedIsbn, handleLookup]);
+
 
   useEffect(() => {
     fetchBooks();
@@ -219,20 +244,6 @@ function App() {
           alert(`Error: ${error.message}`);
       }
   }
-
-  const handleLookup = useCallback(async (isbn) => {
-    if (!isbn) return;
-    try {
-      const response = await fetch(`${API_URL}/api/lookup?isbn=${isbn}`);
-      if (!response.ok) throw new Error('Book not found');
-      const data = await response.json();
-      setForm(data);
-      setIsAddModalOpen(true);
-      setIsbnToLookUp('');
-    } catch (error) {
-      alert('Could not find a book with that ISBN.');
-    }
-  }, []);
 
   const handleDelete = async (bookId) => {
     if (window.confirm('Are you sure you want to delete this book? This will also remove all associated loan and checkout records.')) {
@@ -650,8 +661,9 @@ function App() {
           <div className="scanner-modal">
                <Scanner
                   onResult={(result) => {
+                      // --- FIX: Store the result in state and close the modal ---
+                      setScannedIsbn(result.getText());
                       setIsScannerOpen(false);
-                      handleLookup(result.getText());
                   }}
                   onError={(error) => {
                       console.error(error?.message);
@@ -668,7 +680,9 @@ function App() {
                   formats={["ean_13"]}
               />
               <div className="scanner-content">
-                  <div className="viewfinder"></div>
+                  <div className="viewfinder">
+                      <div className="scanning-line"></div>
+                  </div>
                   <p className="scanner-prompt">Align the book's barcode within the frame</p>
               </div>
               <button className="close-scanner-btn" onClick={() => setIsScannerOpen(false)}>×</button>
