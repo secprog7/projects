@@ -1,29 +1,29 @@
-/* client/src/App.css */
+/* --- THEME UPDATE: Added Google Font import --- */
+/* This is now imported in public/index.html */
 
 /* --- THEME UPDATE: Replaced dark theme with new light theme color palette --- */
 :root {
   --primary-blue: #0077cc;
-  --primary-blue-hover: #005fa3;
   --accent-orange: #ff9900;
-  --accent-orange-hover: #e68a00;
   --background-gray: #f5f5f5;
-  --surface-white: #ffffff;
   --text-dark-gray: #333333;
-  --text-muted: #666666;
   --border-light-gray: #dddddd;
+  --text-light: #ffffff;
+  --text-muted: #6c757d;
   --danger-red: #dc3545;
+  --primary-blue-dark: #005fa3;
+  --accent-orange-dark: #cc7a00;
 }
 
-/* --- THEME UPDATE: Applied new base font and colors --- */
+/* --- THEME UPDATE: Global styles reset --- */
 body {
   margin: 0;
-  /* --- FIX: Font is now linked in index.html --- */
   font-family: 'Open Sans', sans-serif;
-  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background-gray);
   color: var(--text-dark-gray);
+  font-size: 16px;
 }
 
 h1, h2, h3 {
@@ -31,19 +31,19 @@ h1, h2, h3 {
   color: var(--text-dark-gray);
 }
 
-/* --- APP LAYOUT --- */
+/* --- THEME UPDATE: App Layout with professional theme --- */
 .App {
   text-align: left;
 }
 
 .App-header {
-  background-color: var(--surface-white);
+  background-color: var(--text-light);
   padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--border-light-gray);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .App-header h1 {
@@ -63,12 +63,14 @@ section {
 }
 
 section h2 {
-  border-bottom: 1px solid var(--border-light-gray);
+  border-bottom: 2px solid var(--primary-blue);
   padding-bottom: 0.5rem;
   margin-bottom: 1.5rem;
+  color: var(--text-dark-gray);
+  font-size: 1.5rem;
 }
 
-/* --- NAVIGATION --- */
+/* --- THEME UPDATE: Navigation styles --- */
 .app-nav .nav-btn {
   background: none;
   border: none;
@@ -78,81 +80,21 @@ section h2 {
   padding: 0.5rem 1rem;
   cursor: pointer;
   transition: color 0.2s;
-  border-radius: 4px;
+  border-bottom: 2px solid transparent;
 }
 
 .app-nav .nav-btn:hover {
   color: var(--primary-blue);
-  background-color: #f0f0f0;
 }
 
 .app-nav .nav-btn.active {
   color: var(--primary-blue);
-  border-bottom: 3px solid var(--primary-blue);
+  border-bottom: 2px solid var(--primary-blue);
 }
 
-/* --- THEME UPDATE: General Button Styling --- */
-button, .btn {
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s, box-shadow 0.2s, border-color 0.2s;
-  border: 1px solid transparent;
-}
-
-button:hover {
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-button:disabled {
-  background-color: #cccccc;
-  color: #888888;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* Primary Button Style */
-.add-book-btn, .return-btn, .checkout-return-btn, .add-book-form button[type="submit"] {
-  background-color: var(--primary-blue);
-  color: white;
-}
-.add-book-btn:hover, .return-btn:hover, .checkout-return-btn:hover, .add-book-form button[type="submit"]:hover {
-  background-color: var(--primary-blue-hover);
-}
-
-/* CTA Button Style */
-.loan-book-btn {
-    background-color: var(--accent-orange);
-    color: white;
-    font-weight: 700;
-}
-.loan-book-btn:hover {
-    background-color: var(--accent-orange-hover);
-}
-
-/* Secondary Button Style */
-.lookup-btn, .delete-btn {
-    background-color: var(--surface-white);
-    color: var(--primary-blue);
-    border: 1px solid var(--primary-blue);
-}
-.lookup-btn:hover, .delete-btn:hover {
-    background-color: #eaf5ff;
-}
-.delete-btn {
-    color: var(--danger-red);
-    border-color: var(--danger-red);
-}
-.delete-btn:hover {
-    background-color: #fff0f1;
-}
-
-
-/* --- LIBRARY HEADER & ACTIONS --- */
+/* --- THEME UPDATE: Library Header & Actions --- */
 .library-header {
-    background: var(--surface-white);
+    background: var(--text-light);
     padding: 1.5rem;
     border-radius: 8px;
     margin-bottom: 2rem;
@@ -161,30 +103,15 @@ button:disabled {
 
 .top-actions {
     display: flex;
-    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: 1rem;
     margin-bottom: 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .search-container {
     flex-grow: 1;
-}
-
-.search-input {
-    width: 100%;
-    padding: 0.75rem;
-    font-size: 1rem;
-    border: 1px solid var(--border-light-gray);
-    border-radius: 6px;
-    background-color: var(--surface-white);
-    color: var(--text-dark-gray);
-}
-.search-input:focus {
-    outline: none;
-    border-color: var(--primary-blue);
-    box-shadow: 0 0 0 2px rgba(0, 119, 204, 0.2);
 }
 
 .isbn-lookup-container {
@@ -192,9 +119,113 @@ button:disabled {
     gap: 0.5rem;
 }
 
+.search-input {
+    width: 100%;
+    min-width: 200px;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 1px solid var(--border-light-gray);
+    border-radius: 4px;
+    background-color: var(--text-light);
+    color: var(--text-dark-gray);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 2px rgba(0, 119, 204, 0.2);
+}
+
 .main-actions {
     display: flex;
     gap: 0.5rem;
+}
+
+/* --- THEME UPDATE: Button System --- */
+.add-book-btn, .lookup-btn, .loan-book-btn, .cta-btn, .return-btn, .checkout-return-btn, .scan-btn {
+    padding: 0.75rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.add-book-btn, .loan-book-btn, .cta-btn {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+}
+
+/* Primary Button */
+.add-book-btn, .return-btn, .checkout-return-btn {
+    background-color: var(--primary-blue);
+    color: var(--text-light);
+}
+.add-book-btn:hover, .return-btn:hover, .checkout-return-btn:hover {
+    background-color: var(--primary-blue-dark);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* CTA Button */
+.loan-book-btn, .cta-btn {
+    background-color: var(--accent-orange);
+    color: var(--text-light);
+    font-weight: 700;
+}
+.loan-book-btn:hover, .cta-btn:hover {
+    background-color: var(--accent-orange-dark);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Secondary Button */
+.lookup-btn, .scan-btn {
+    background-color: var(--text-light);
+    color: var(--primary-blue);
+    border: 1px solid var(--primary-blue);
+}
+.lookup-btn:hover, .scan-btn:hover {
+    background-color: var(--primary-blue);
+    color: var(--text-light);
+}
+.scan-btn {
+    padding: 0.65rem; /* Make it more square */
+}
+
+/* --- NEW FEATURE: Edit Button Style --- */
+.edit-btn {
+    padding: 0.75rem 1.5rem;
+    border: 1px solid var(--accent-orange);
+    color: var(--accent-orange);
+    background: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.2s, color 0.2s;
+}
+.edit-btn:hover {
+    background-color: var(--accent-orange);
+    color: white;
+}
+
+
+/* Danger Button */
+.delete-btn {
+    padding: 0.75rem 1.5rem;
+    border: 1px solid var(--danger-red);
+    color: var(--danger-red);
+    background: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+.delete-btn:hover {
+    background-color: var(--danger-red);
+    color: var(--text-light);
 }
 
 
@@ -203,16 +234,18 @@ button:disabled {
     align-items: center;
     gap: 0.5rem;
 }
-
+.filter-pills .filter-label {
+    font-weight: 600;
+}
 .filter-pills select {
     padding: 0.5rem;
     border: 1px solid var(--border-light-gray);
-    border-radius: 6px;
-    background-color: var(--surface-white);
+    border-radius: 4px;
+    background-color: var(--text-light);
     color: var(--text-dark-gray);
 }
 
-/* --- BOOK GRID & CARDS --- */
+/* --- THEME UPDATE: Book Grid & Cards --- */
 .book-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -222,35 +255,33 @@ button:disabled {
 }
 
 .book-card {
-  background-color: var(--surface-white);
+  background-color: var(--text-light);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
   border: 1px solid var(--border-light-gray);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  position: relative;
 }
 
 .book-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
 .cover-wrapper {
     position: relative;
-    background-color: #eee;
 }
 
 .book-cover-image {
   width: 100%;
-  height: 252px;
+  height: 250px;
   object-fit: cover;
   display: block;
-  border-bottom: 1px solid var(--border-light-gray);
 }
 .book-cover-placeholder {
     width: 100%;
-    height: 252px;
+    height: 250px;
     background: #e9ecef;
     display: flex;
     justify-content: center;
@@ -282,16 +313,17 @@ button:disabled {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(51, 51, 51, 0.7);
+  background-color: rgba(0, 0, 0, 0.6);
   color: white;
   display: flex;
   justify-content: center;
   align-items: center;
   font-size: 1.2rem;
   font-weight: bold;
+  text-align: center;
 }
 
-/* --- LOAN & CHECKOUT LISTS --- */
+/* --- THEME UPDATE: Loan & Checkout Lists --- */
 .loan-list, .checkout-list {
   list-style: none;
   padding: 0;
@@ -302,13 +334,13 @@ button:disabled {
 }
 
 .loan-card, .checkout-card {
-  background: var(--surface-white);
+  background: var(--text-light);
   border-radius: 8px;
   padding: 1rem;
   display: flex;
   align-items: center;
   gap: 1rem;
-  min-width: 300px;
+  min-width: 320px;
   border: 1px solid var(--border-light-gray);
 }
 .loan-card img, .checkout-card img {
@@ -321,23 +353,18 @@ button:disabled {
   display: flex;
   flex-direction: column;
 }
-.loan-info span, .checkout-info span {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-}
-.return-btn, .checkout-return-btn {
-  margin-left: auto;
-  padding: 0.5rem 1rem;
+.loan-info strong, .checkout-info strong {
+    margin-bottom: 0.25rem;
 }
 
-/* --- MODALS --- */
+/* --- THEME UPDATE: Modals --- */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -346,7 +373,7 @@ button:disabled {
 }
 
 .modal-content {
-  background: var(--surface-white);
+  background: var(--background-gray);
   padding: 2rem;
   border-radius: 8px;
   max-width: 800px;
@@ -354,11 +381,11 @@ button:disabled {
   max-height: 90vh;
   overflow-y: auto;
   display: flex;
-  gap: 1.5rem;
+  gap: 2rem;
   color: var(--text-dark-gray);
   border: 1px solid var(--border-light-gray);
   position: relative;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
 .close-btn {
@@ -370,13 +397,15 @@ button:disabled {
   color: var(--text-muted);
   font-size: 1.5rem;
   cursor: pointer;
+  line-height: 1;
 }
 
 .modal-cover-image {
   width: 200px;
-  height: 300px;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
   border-radius: 4px;
+  align-self: flex-start;
 }
 
 .modal-info {
@@ -384,11 +413,19 @@ button:disabled {
 }
 .modal-info h2 {
   margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+.modal-info h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    font-weight: 400;
+    color: var(--text-muted);
 }
 .modal-actions {
   margin-top: 1.5rem;
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .add-book-modal-content {
@@ -398,54 +435,64 @@ button:disabled {
 .add-book-form {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.5rem;
 }
-
 .add-book-form .form-row {
     display: flex;
-    gap: 1rem;
-    align-items: center;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+.add-book-form label {
+    font-weight: 600;
+    margin-bottom: -1rem;
 }
 .add-book-form input, .add-book-form textarea {
-    flex-grow: 1;
+    width: 100%;
     padding: 0.75rem;
     border: 1px solid var(--border-light-gray);
-    border-radius: 6px;
-    background-color: var(--surface-white);
+    border-radius: 4px;
+    background-color: var(--text-light);
     color: var(--text-dark-gray);
+    box-sizing: border-box;
 }
 .add-book-form button[type="submit"] {
     align-self: flex-end;
-    margin-top: 1rem;
 }
 
-.on-loan-status, .checkout-section {
-    background: var(--background-gray);
+.on-loan-status {
+    background: #fff3cd;
+    color: #664d03;
     padding: 1rem;
-    border-radius: 6px;
-    margin: 1.5rem 0;
-    border: 1px solid var(--border-light-gray);
+    border-radius: 4px;
+    margin: 1rem 0;
+    font-weight: 600;
+}
+.checkout-section {
+    background: #e9ecef;
+    padding: 1rem;
+    border-radius: 4px;
+    margin: 1rem 0;
 }
 .checkout-section div {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 .checkout-form {
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 
-/* --- ANALYTICS --- */
+/* --- THEME UPDATE: Analytics --- */
 .analytics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
 }
 .stat-card {
-  background: var(--surface-white);
+  background: var(--text-light);
   padding: 1.5rem;
   border-radius: 8px;
   border: 1px solid var(--border-light-gray);
@@ -473,7 +520,32 @@ button:disabled {
   text-align: left;
   border-bottom: 1px solid var(--border-light-gray);
 }
-.borrower-table th {
-    background-color: #f9f9f9;
+.borrower-table thead {
+    background-color: var(--background-gray);
+}
+
+/* --- NEW FEATURE: Scanner Modal Styles --- */
+.scanner-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.close-scanner-btn {
+    position: absolute;
+    top: 2rem;
+    right: 2rem;
+    font-size: 2.5rem;
+    color: white;
+    background: none;
+    border: none;
+    cursor: pointer;
 }
 

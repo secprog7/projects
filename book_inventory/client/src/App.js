@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+// --- FIX: Corrected component name and props for the scanner library ---
+import { Scanner } from '@yudiel/react-qr-scanner';
 import './App.css';
 
 // --- Production-Ready API URL ---
@@ -20,6 +22,12 @@ function App() {
   // --- STATE for page navigation ---
   const [page, setPage] = useState('library');
 
+  // --- NEW FEATURE (EDIT): State to track which book is being edited ---
+  const [editingBook, setEditingBook] = useState(null);
+
+  // --- NEW FEATURE (SCANNER): State for scanner visibility ---
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
   // Existing States
   const [books, setBooks] = useState([]);
   const [form, setForm] = useState({ title: '', author: '', isbn: '', coverImageUrl: '', synopsis: '', genre: '' });
@@ -29,7 +37,7 @@ function App() {
   const [genres, setGenres] = useState(['All']);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isbnToLookUp, setIsbnToLookUp] = useState(''); // State for the ISBN input
+  const [isbnToLookUp, setIsbnToLookUp] = useState('');
 
   // Loan States
   const [loans, setLoans] = useState([]);
@@ -47,7 +55,6 @@ function App() {
 
 
   // --- Data Fetching ---
-  // FIX: Wrapped fetch functions in useCallback to stabilize them for useEffect dependencies
   const fetchBooks = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -89,12 +96,12 @@ function App() {
     fetchBooks();
     fetchLoans();
     fetchStats();
-  }, [fetchBooks, fetchLoans, fetchStats]); // FIX: Added dependencies to satisfy exhaustive-deps rule
+  }, [fetchBooks, fetchLoans, fetchStats]);
 
   useEffect(() => {
     const timerId = setTimeout(() => { if (page === 'library') fetchBooks(); }, 300);
     return () => clearTimeout(timerId);
-  }, [filterGenre, searchTerm, page, fetchBooks]); // FIX: Added fetchBooks dependency
+  }, [filterGenre, searchTerm, page, fetchBooks]);
 
   useEffect(() => {
     const fetchAllBooksForGenres = async () => {
@@ -111,7 +118,6 @@ function App() {
 
 
   // --- Form Handlers ---
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
@@ -127,8 +133,7 @@ function App() {
   }
 
   // --- Submission Handlers ---
-
-  const handleSubmit = async (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData();
     Object.keys(form).forEach(key => formData.append(key, form[key]));
@@ -141,16 +146,50 @@ function App() {
         method: 'POST',
         body: formData,
       });
-      if (!response.ok) throw new Error('Failed to add book');
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Failed to add book');
+      }
       
       setForm({ title: '', author: '', isbn: '', coverImageUrl: '', synopsis: '', genre: '' });
       setCoverImage(null);
       setIsAddModalOpen(false);
-      setFilterGenre('All');
-      setSearchTerm('');
       fetchBooks();
     } catch (error) {
       console.error("Error adding book:", error);
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  const handleUpdateSubmit = async (e) => {
+    e.preventDefault();
+    const formData = new FormData();
+    Object.keys(form).forEach(key => {
+        if (['_id', 'checkoutDate', 'checkedOutBy'].indexOf(key) === -1) {
+            formData.append(key, form[key]);
+        }
+    });
+
+    if (coverImage) {
+        formData.append('coverImage', coverImage);
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/books/${editingBook._id}/details`, {
+            method: 'PUT',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || 'Failed to update book');
+        }
+        
+        closeAddEditModal();
+        fetchBooks();
+    } catch (error) {
+        console.error("Error updating book:", error);
+        alert(`Error: ${error.message}`);
     }
   };
 
@@ -173,7 +212,7 @@ function App() {
           setIsLoanModalOpen(false);
           setLoanForm({ borrowerName: '', contactInfo: '', dueDate: '', notes: '' });
           fetchLoans();
-          fetchBooks(); // Refetch books to update their status visually if needed
+          fetchBooks();
           fetchStats();
           setSelectedBook(null);
       } catch (error) {
@@ -182,20 +221,19 @@ function App() {
       }
   }
 
-  const handleLookup = async (isbn) => {
+  const handleLookup = useCallback(async (isbn) => {
     if (!isbn) return;
     try {
       const response = await fetch(`${API_URL}/api/lookup?isbn=${isbn}`);
       if (!response.ok) throw new Error('Book not found');
       const data = await response.json();
-      // Pre-fill the add form with the fetched data and open the modal
       setForm(data);
       setIsAddModalOpen(true);
-      setIsbnToLookUp(''); // Clear the input field after successful lookup
+      setIsbnToLookUp('');
     } catch (error) {
       alert('Could not find a book with that ISBN.');
     }
-  };
+  }, []);
 
   const handleDelete = async (bookId) => {
     if (window.confirm('Are you sure you want to delete this book? This will also remove all associated loan and checkout records.')) {
@@ -223,9 +261,9 @@ function App() {
       }
   };
 
-  const handleUpdateBook = async (bookId, updateData) => {
+  const handleCheckoutUpdate = async (bookId, updateData) => {
     try {
-      const response = await fetch(`${API_URL}/api/books/${bookId}`, {
+      const response = await fetch(`${API_URL}/api/books/${bookId}/checkout`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -254,6 +292,20 @@ function App() {
       setLoanForm({ borrowerName: '', contactInfo: '', dueDate: twoWeeksFromNow.toISOString().split('T')[0], notes: '' });
       setIsLoanModalOpen(true);
   }
+
+  const openEditModal = (book) => {
+      setSelectedBook(null);
+      setEditingBook(book);
+      setForm(book);
+      setIsAddModalOpen(true);
+  };
+
+  const closeAddEditModal = () => {
+    setIsAddModalOpen(false);
+    setEditingBook(null);
+    setForm({ title: '', author: '', isbn: '', coverImageUrl: '', synopsis: '', genre: '' });
+    setCoverImage(null);
+  };
 
   // --- Helper variables for rendering ---
   const activeLoans = loans.filter(loan => loan.status === 'Loaned' || loan.status === 'Overdue');
@@ -284,7 +336,6 @@ function App() {
                     <div className="search-container">
                         <input type="text" placeholder="Search by title, author, etc..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="search-input" />
                     </div>
-                     {/* --- FEATURE UPDATE: Replaced prompt with an input field --- */}
                     <div className="isbn-lookup-container">
                         <input 
                             type="text" 
@@ -294,9 +345,12 @@ function App() {
                             className="search-input"
                         />
                         <button className="lookup-btn" onClick={() => handleLookup(isbnToLookUp)}>Find</button>
+                        <button className="scan-btn" onClick={() => setIsScannerOpen(true)}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>
+                        </button>
                     </div>
                     <div className="main-actions">
-                        <button className="add-book-btn" onClick={() => { setForm({ title: '', author: '', isbn: '', synopsis: '', genre: '' }); setCoverImage(null); setIsAddModalOpen(true); }}>+ Add Manually</button>
+                        <button className="add-book-btn" onClick={() => setIsAddModalOpen(true)}>+ Add Manually</button>
                     </div>
                 </div>
                 <div className="filter-pills">
@@ -339,7 +393,7 @@ function App() {
                                   <span>Since: {new Date(book.checkoutDate).toLocaleDateString()}</span>
                               </div>
                               <button 
-                                  onClick={() => handleUpdateBook(book._id, { checkoutDate: null, checkedOutBy: null })} 
+                                  onClick={() => handleCheckoutUpdate(book._id, { checkoutDate: null, checkedOutBy: null })} 
                                   className="checkout-return-btn"
                               >
                                   Return
@@ -491,7 +545,7 @@ function App() {
                 {selectedBook.checkoutDate ? (
                   <div>
                     <span>{`Checked out by ${selectedBook.checkedOutBy} on ${new Date(selectedBook.checkoutDate).toLocaleDateString()}`}</span>
-                    <button onClick={() => handleUpdateBook(selectedBook._id, { checkoutDate: null, checkedOutBy: null })}>Return</button>
+                    <button onClick={() => handleCheckoutUpdate(selectedBook._id, { checkoutDate: null, checkedOutBy: null })}>Return</button>
                   </div>
                 ) : isSelectedBookOnLoan ? (
                   <div>
@@ -510,7 +564,7 @@ function App() {
                         value={checkoutForm.name} 
                         onChange={(e) => setCheckoutForm({...checkoutForm, name: e.target.value})}
                     />
-                    <button onClick={() => handleUpdateBook(selectedBook._id, { checkoutDate: checkoutForm.date, checkedOutBy: checkoutForm.name })}>Save</button>
+                    <button onClick={() => handleCheckoutUpdate(selectedBook._id, { checkoutDate: checkoutForm.date, checkedOutBy: checkoutForm.name })}>Save</button>
                     <button onClick={() => setEditingCheckout(false)}>Cancel</button>
                   </div>
                 ) : (
@@ -530,6 +584,7 @@ function App() {
                 ) : (
                   <button onClick={() => openLoanModal(selectedBook)} className="loan-book-btn">Loan This Book</button>
                 )}
+                <button onClick={() => openEditModal(selectedBook)} className="edit-btn">Edit</button>
                 <button onClick={() => handleDelete(selectedBook._id)} className="delete-btn">Delete Book</button>
               </div>
             </div>
@@ -538,27 +593,27 @@ function App() {
       )}
 
       {isAddModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsAddModalOpen(false)}>
+        <div className="modal-overlay" onClick={closeAddEditModal}>
           <div className="modal-content add-book-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="close-btn" onClick={() => setIsAddModalOpen(false)}>×</button>
-            <h2>Add a New Book</h2>
-            <form onSubmit={handleSubmit} className="add-book-form">
+            <button className="close-btn" onClick={closeAddEditModal}>×</button>
+            <h2>{editingBook ? 'Edit Book Details' : 'Add a New Book'}</h2>
+            <form onSubmit={editingBook ? handleUpdateSubmit : handleAddSubmit} className="add-book-form">
               <div className="form-row">
                 <input type="text" name="title" placeholder="Title" value={form.title} onChange={handleInputChange} required />
                 <input type="text" name="author" placeholder="Author" value={form.author} onChange={handleInputChange} required />
               </div>
               <div className="form-row">
-                <input type="text" name="isbn" placeholder="ISBN" value={form.isbn} onChange={handleInputChange} />
+                <input type="text" name="isbn" placeholder="ISBN" value={form.isbn} onChange={handleInputChange} required />
                 <input type="text" name="genre" placeholder="Genre" value={form.genre} onChange={handleInputChange} />
               </div>
               <div className="form-row">
                 <textarea name="synopsis" placeholder="Synopsis" value={form.synopsis} onChange={handleInputChange} />
               </div>
               <div className="form-row">
-                <label htmlFor="coverImageInput">Cover Image:</label>
+                <label htmlFor="coverImageInput">Cover Image (optional):</label>
                 <input id="coverImageInput" type="file" name="coverImage" onChange={handleFileChange} />
               </div>
-              <button type="submit">Add Book to Inventory</button>
+              <button type="submit" className="cta-btn">{editingBook ? 'Save Changes' : 'Add Book to Inventory'}</button>
             </form>
           </div>
         </div>
@@ -586,10 +641,27 @@ function App() {
                          <label htmlFor="notes">Notes:</label>
                         <textarea id="notes" name="notes" placeholder="Notes (e.g., condition)" value={loanForm.notes} onChange={handleLoanInputChange}></textarea>
                     </div>
-                    <button type="submit">Confirm Loan</button>
+                    <button type="submit" className="cta-btn">Confirm Loan</button>
                 </form>
             </div>
         </div>
+      )}
+
+      {/* --- FIX: Swapped scanner library and updated props --- */}
+      {isScannerOpen && (
+          <div className="scanner-modal">
+               <Scanner
+                  onResult={(result) => {
+                      setIsScannerOpen(false);
+                      handleLookup(result.getText());
+                  }}
+                  onError={(error) => {
+                      console.error(error?.message);
+                  }}
+                  videoStyle={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <button className="close-scanner-btn" onClick={() => setIsScannerOpen(false)}>×</button>
+          </div>
       )}
     </div>
   );
