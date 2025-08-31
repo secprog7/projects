@@ -27,8 +27,6 @@ function App() {
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // --- FIX: A new state to reliably handle the result of a scan ---
-  const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
   const [books, setBooks] = useState([]);
@@ -107,16 +105,6 @@ function App() {
       alert('Could not find a book with that ISBN.');
     }
   }, []);
-
-  // --- FIX: A more robust, state-driven approach to handling scan results ---
-  useEffect(() => {
-    if (scannedIsbn) {
-      // This effect triggers ONLY after the scannedIsbn state has been updated.
-      // This ensures the scanner modal is closed before we proceed.
-      handleLookup(scannedIsbn);
-      setScannedIsbn(null); // Reset for the next scan
-    }
-  }, [scannedIsbn, handleLookup]);
 
 
   useEffect(() => {
@@ -320,6 +308,20 @@ function App() {
     setCoverImage(null);
   };
   
+  // --- FIX: A new, more robust handler for successful scans ---
+  const handleScanSuccess = (scannedText) => {
+    if (isProcessingScan) return; // Prevent multiple triggers
+
+    setIsProcessingScan(true); // Lock to prevent re-scanning
+    setIsScannerOpen(false);  // Immediately close the scanner
+
+    // Use a timeout to ensure the scanner modal has fully closed before proceeding
+    setTimeout(() => {
+        handleLookup(scannedText);
+        setIsProcessingScan(false); // Release the lock
+    }, 300); // 300ms delay for smooth transition
+  };
+
   // --- Helper variables for rendering ---
   const activeLoans = loans.filter(loan => loan.status === 'Loaned' || loan.status === 'Overdue');
   const personallyCheckedOutBooks = books.filter(book => book.checkoutDate);
@@ -359,7 +361,7 @@ function App() {
                         />
                         <button className="lookup-btn" onClick={() => handleLookup(isbnToLookUp)}>Find</button>
                         <button className="scan-btn" onClick={() => { setIsProcessingScan(false); setIsScannerOpen(true); }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>
                         </button>
                     </div>
                     <div className="main-actions">
