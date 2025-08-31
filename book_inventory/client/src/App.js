@@ -27,7 +27,7 @@ function App() {
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isProcessingScan, setIsProcessingScan] = useState(false);
-  // --- FIX: State to handle the result of a scan gracefully ---
+  // --- FIX: Added missing state for handling the scanned ISBN result ---
   const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
@@ -108,18 +108,15 @@ function App() {
     }
   }, []);
 
-  // --- FIX: useEffect to process the scanned ISBN *after* the scanner modal closes ---
+  // --- FIX: Added useEffect to process the scanned ISBN after the scanner modal closes ---
   useEffect(() => {
     if (scannedIsbn) {
-      // This effect runs when a scan is completed and the ISBN is set.
-      // We use a small timeout to allow the scanner modal to close smoothly
-      // before the next modal (Add Book) opens.
-      const timer = setTimeout(() => {
+      // Use a small timeout to ensure the scanner modal has fully transitioned out
+      setTimeout(() => {
         handleLookup(scannedIsbn);
-        setScannedIsbn(null); // Reset the state for the next scan
-        setIsProcessingScan(false); // Release the lock for the next scan
+        setScannedIsbn(null); // Reset after processing
+        setIsProcessingScan(false); // Release the lock
       }, 100);
-      return () => clearTimeout(timer); // Cleanup the timer
     }
   }, [scannedIsbn, handleLookup]);
 
