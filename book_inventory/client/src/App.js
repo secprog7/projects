@@ -26,7 +26,7 @@ function App() {
 
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  // --- FIX: State to handle the result of a scan gracefully ---
+  // --- FIX: Added missing state for handling the scanned ISBN result ---
   const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
@@ -107,11 +107,14 @@ function App() {
     }
   }, []);
 
-  // --- FIX: useEffect to process the scanned ISBN *after* the scanner modal closes ---
+  // --- FIX: Added useEffect to process the scanned ISBN after the scanner modal closes ---
   useEffect(() => {
     if (scannedIsbn) {
-      handleLookup(scannedIsbn);
-      setScannedIsbn(null); // Reset after processing
+      // Use a small timeout to ensure the scanner modal has fully transitioned out
+      setTimeout(() => {
+        handleLookup(scannedIsbn);
+        setScannedIsbn(null); // Reset after processing
+      }, 100);
     }
   }, [scannedIsbn, handleLookup]);
 
