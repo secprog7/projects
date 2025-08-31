@@ -26,8 +26,9 @@ function App() {
 
   // --- NEW FEATURE (SCANNER): State for scanner visibility ---
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  // --- FIX: State to prevent multiple scan results from being processed ---
   const [isProcessingScan, setIsProcessingScan] = useState(false);
+  // --- FIX: State to handle the result of a scan gracefully ---
+  const [scannedIsbn, setScannedIsbn] = useState(null);
 
   // Existing States
   const [books, setBooks] = useState([]);
@@ -106,6 +107,21 @@ function App() {
       alert('Could not find a book with that ISBN.');
     }
   }, []);
+
+  // --- FIX: useEffect to process the scanned ISBN *after* the scanner modal closes ---
+  useEffect(() => {
+    if (scannedIsbn) {
+      // This effect runs when a scan is completed and the ISBN is set.
+      // We use a small timeout to allow the scanner modal to close smoothly
+      // before the next modal (Add Book) opens.
+      const timer = setTimeout(() => {
+        handleLookup(scannedIsbn);
+        setScannedIsbn(null); // Reset the state for the next scan
+        setIsProcessingScan(false); // Release the lock for the next scan
+      }, 100);
+      return () => clearTimeout(timer); // Cleanup the timer
+    }
+  }, [scannedIsbn, handleLookup]);
 
 
   useEffect(() => {
@@ -653,16 +669,15 @@ function App() {
           <div className="scanner-modal">
                <Scanner
                   onResult={(result) => {
+                      // --- FIX: More robust handling of scan result ---
                       if (isProcessingScan) return;
                       
-                      setIsProcessingScan(true);
                       const scannedText = result.getText();
-                      setIsScannerOpen(false);
-
-                      setTimeout(() => {
-                        handleLookup(scannedText);
-                        setIsProcessingScan(false);
-                      }, 200);
+                      if (scannedText) {
+                          setIsProcessingScan(true);
+                          setScannedIsbn(scannedText);
+                          setIsScannerOpen(false);
+                      }
                   }}
                   onError={(error) => {
                       console.error(error?.message);
