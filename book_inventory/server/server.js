@@ -3,27 +3,22 @@ const mongoose = require('mongoose');
 const path = require('path');
 const multer = require('multer');
 const cors = require('cors');
-const axios = require('axios'); // Use axios for HTTP requests
+const axios = require('axios'); // Use axios for API requests
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // --- Middleware ---
-// --- PRODUCTION UPDATE: Configure CORS for production ---
-const whitelist = ['http://localhost:3000', 'https://bookkeeper7.netlify.app']; // Replace with your Netlify URL
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
-    }
-  }
-}
-app.use(cors(corsOptions));
+app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// --- Serve React App in Production ---
+// This should be the root of your *project*, not the server folder
+const projectRoot = path.resolve(__dirname, '..'); 
+app.use(express.static(path.join(projectRoot, 'client', 'build')));
+
 
 // --- MongoDB Connection ---
 const mongoURI = process.env.MONGO_URI;
@@ -42,7 +37,8 @@ mongoose.connect(mongoURI)
 // --- Multer Setup for Image Uploads ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    // Correctly reference the uploads directory from the server folder
+    cb(null, path.join(__dirname, 'uploads'));
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
@@ -54,7 +50,7 @@ const upload = multer({ storage: storage });
 const bookSchema = new mongoose.Schema({
   title: { type: String, required: true },
   author: { type: String, required: true },
-  isbn: { type: String, required: true },
+  isbn: { type: String, required: true, unique: true },
   coverImageUrl: { type: String },
   synopsis: { type: String },
   genre: { type: String },
@@ -80,6 +76,7 @@ const loanSchema = new mongoose.Schema({
 
 const Loan = mongoose.model('Loan', loanSchema);
 
+// Schema for personal checkouts
 const checkoutSchema = new mongoose.Schema({
     book: { type: mongoose.Schema.Types.ObjectId, ref: 'Book', required: true },
     checkedOutBy: { type: String, required: true },
@@ -105,7 +102,7 @@ app.get('/api/books', async (req, res) => {
       query.$text = { $search: q };
     }
 
-    const books = await Book.find(query).sort({ title: 1 }); // Default sort by title
+    const books = await Book.find(query);
     res.json(books);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -116,12 +113,12 @@ app.get('/api/books', async (req, res) => {
 app.post('/api/books', upload.single('coverImage'), async (req, res) => {
   const { title, author, isbn, synopsis, genre } = req.body;
   
-  // Prevent duplicate ISBNs
+  // Check for duplicate ISBN
   const existingBook = await Book.findOne({ isbn });
   if (existingBook) {
-      return res.status(409).json({ message: "A book with this ISBN already exists."});
+      return res.status(409).json({ message: "A book with this ISBN already exists in your collection." });
   }
-
+  
   const coverImageUrl = req.file ? `/uploads/${req.file.filename}` : req.body.coverImageUrl;
 
   const newBook = new Book({ title, author, isbn, coverImageUrl, synopsis, genre });
@@ -133,46 +130,29 @@ app.post('/api/books', upload.single('coverImage'), async (req, res) => {
   }
 });
 
-// --- NEW FEATURE: PUT route to update a book's details ---
-app.put('/api/books/:id/details', upload.single('coverImage'), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title, author, isbn, synopsis, genre } = req.body;
-
-        const updateData = { title, author, isbn, synopsis, genre };
-
-        if (req.file) {
-            updateData.coverImageUrl = `/uploads/${req.file.filename}`;
-            // In a real-world app, you might also delete the old image file from storage here.
-        }
-
-        const updatedBook = await Book.findByIdAndUpdate(id, updateData, { new: true });
-
-        if (!updatedBook) {
-            return res.status(404).json({ message: "Book not found" });
-        }
-        res.json(updatedBook);
-    } catch (error) {
-        // Handle potential duplicate ISBN error on update
-        if (error.code === 11000) {
-            return res.status(409).json({ message: "Another book with this ISBN already exists."});
-        }
-        res.status(400).json({ message: error.message });
-    }
-});
-
-
-// DELETE a book
+// DELETE a book and all associated records
 app.delete('/api/books/:id', async (req, res) => {
   try {
     const bookId = req.params.id;
-    // Also delete associated loans and checkouts
-    await Loan.deleteMany({ book: bookId });
-    await Checkout.deleteMany({ book: bookId });
-    const book = await Book.findByIdAndDelete(bookId);
+    // Use a transaction to ensure all or nothing is deleted
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
+    const book = await Book.findByIdAndDelete(bookId, { session });
+    if (!book) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({ message: "Book not found" });
+    }
+    
+    // Delete associated loans and checkouts
+    await Loan.deleteMany({ book: bookId }, { session });
+    await Checkout.deleteMany({ book: bookId }, { session });
+    
+    await session.commitTransaction();
+    session.endSession();
 
-    if (!book) return res.status(404).json({ message: "Book not found" });
-    res.json({ message: "Book and associated records deleted successfully" });
+    res.json({ message: "Book and all associated records deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -191,33 +171,32 @@ app.get('/api/lookup', async (req, res) => {
         const formattedData = {
             title: bookInfo.title || 'No Title Found',
             author: bookInfo.authors ? bookInfo.authors.join(', ') : 'No Author Found',
-            isbn: isbn, // Use the provided ISBN to ensure accuracy
+            isbn: isbn,
             coverImageUrl: bookInfo.imageLinks?.thumbnail || '',
             synopsis: bookInfo.description || '',
             genre: bookInfo.categories ? bookInfo.categories[0] : ''
         };
         res.json(formattedData);
     } catch (error) {
-        console.error("Google Books API Error:", error.message);
-        res.status(500).json({ message: "Failed to fetch data from Google Books API" });
+        console.error("Google Books API error:", error.message);
+        res.status(500).json({ message: "Failed to fetch data from Google Books API." });
     }
 });
 
-// UPDATE a book's checkout status
+// UPDATE a book's personal checkout status
 app.put('/api/books/:id/checkout', async (req, res) => {
   try {
     const book = await Book.findById(req.params.id);
     if (!book) return res.status(404).json({ message: 'Book not found' });
     
     const isCheckingOut = req.body.checkoutDate && !book.checkoutDate;
-    const isReturning = !req.body.checkoutDate && book.checkoutDate;
+    const isReturning = req.body.checkoutDate === null && book.checkoutDate;
 
     if (isCheckingOut) {
       const existingLoan = await Loan.findOne({ book: book._id, status: 'Loaned' });
       if (existingLoan) {
         return res.status(409).json({ message: "Cannot check out a book that is currently on loan." });
       }
-
       await Checkout.create({
         book: book._id,
         checkedOutBy: req.body.checkedOutBy,
@@ -231,7 +210,6 @@ app.put('/api/books/:id/checkout', async (req, res) => {
       );
     }
     
-    // Update the book document
     book.checkoutDate = req.body.checkoutDate;
     book.checkedOutBy = req.body.checkedOutBy;
     const updatedBook = await book.save();
@@ -242,11 +220,35 @@ app.put('/api/books/:id/checkout', async (req, res) => {
   }
 });
 
+// UPDATE a book's core details (title, author, etc.)
+app.put('/api/books/:id/details', upload.single('coverImage'), async (req, res) => {
+    try {
+        const { title, author, isbn, synopsis, genre } = req.body;
+        const updateData = { title, author, isbn, synopsis, genre };
+
+        if (req.file) {
+            updateData.coverImageUrl = `/uploads/${req.file.filename}`;
+        } else if (req.body.coverImageUrl) {
+            updateData.coverImageUrl = req.body.coverImageUrl;
+        }
+        
+        const updatedBook = await Book.findByIdAndUpdate(req.params.id, updateData, { new: true });
+        
+        if (!updatedBook) {
+            return res.status(404).json({ message: "Book not found" });
+        }
+        
+        res.json(updatedBook);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+});
+
 
 // --- Loan Routes ---
 app.get('/api/loans', async (req, res) => {
     try {
-        const loans = await Loan.find({}).populate('book');
+        const loans = await Loan.find({ status: { $in: ['Loaned', 'Overdue'] } }).populate('book');
         res.json(loans);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -358,14 +360,11 @@ app.get('/api/analytics/stats', async (req, res) => {
   }
 });
 
-// --- Server Production Static Build ---
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../client/build')));
 
-    app.get('*', (req, res) => {
-        res.sendFile(path.resolve(__dirname, '../client/build', 'index.html'));
-    });
-}
+// --- Catch-all to serve index.html for any other request ---
+app.get('*', (req, res) => {
+    res.sendFile(path.join(projectRoot, 'client', 'build', 'index.html'));
+});
 
 
 // --- Server Start ---

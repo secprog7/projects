@@ -524,7 +524,7 @@ section h2 {
     background-color: var(--background-gray);
 }
 
-/* --- NEW FEATURE: Scanner Modal Styles --- */
+/* --- ENHANCEMENT: Scanner Modal Styles --- */
 .scanner-modal {
     position: fixed;
     top: 0;
@@ -536,6 +536,22 @@ section h2 {
     display: flex;
     justify-content: center;
     align-items: center;
+    position: relative; 
+}
+
+/* --- ENHANCEMENT: Viewfinder for barcode scanning --- */
+.viewfinder {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 400px;
+    height: 150px;
+    border: 3px solid rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+    z-index: 2001;
 }
 
 .close-scanner-btn {
@@ -547,5 +563,6 @@ section h2 {
     background: none;
     border: none;
     cursor: pointer;
+    z-index: 2002; /* Ensure it's on top of viewfinder shadow */
 }
 
