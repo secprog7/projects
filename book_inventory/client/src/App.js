@@ -309,7 +309,7 @@ function App() {
   };
   
   // --- FIX: A new, more robust handler for successful scans ---
-  const handleScanSuccess = (scannedText) => {
+  const handleScanSuccess = useCallback((scannedText) => {
     if (isProcessingScan) return; // Prevent multiple triggers
 
     setIsProcessingScan(true); // Lock to prevent re-scanning
@@ -320,7 +320,7 @@ function App() {
         handleLookup(scannedText);
         setIsProcessingScan(false); // Release the lock
     }, 300); // 300ms delay for smooth transition
-  };
+  }, [isProcessingScan, handleLookup]);
 
   // --- Helper variables for rendering ---
   const activeLoans = loans.filter(loan => loan.status === 'Loaned' || loan.status === 'Overdue');
@@ -666,12 +666,12 @@ function App() {
           <div className="scanner-modal">
                <Scanner
                   onResult={(result) => {
-                      // --- FIX: More robust handling of scan result ---
-                      if (isProcessingScan) return;
-                      
-                      const scannedText = result.getText();
-                      if (scannedText) {
-                          handleScanSuccess(scannedText);
+                      // --- FIX: This is now the single point of action for a scan ---
+                      if (!isProcessingScan) {
+                        const scannedText = result.getText();
+                        if (scannedText) {
+                            handleScanSuccess(scannedText);
+                        }
                       }
                   }}
                   onError={(error) => {
