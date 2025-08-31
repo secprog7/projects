@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// --- FIX: Corrected component name and props for the scanner library ---
 import { Scanner } from '@yudiel/react-qr-scanner';
 import './App.css';
 
@@ -647,7 +646,6 @@ function App() {
         </div>
       )}
 
-      {/* --- FIX: Swapped scanner library and updated props --- */}
       {isScannerOpen && (
           <div className="scanner-modal">
                <Scanner
@@ -658,8 +656,21 @@ function App() {
                   onError={(error) => {
                       console.error(error?.message);
                   }}
-                  videoStyle={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  videoStyle={{ 
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%', 
+                    height: '100%', 
+                    objectFit: 'cover',
+                    zIndex: 1999
+                  }}
+                  formats={["ean_13"]}
               />
+              <div className="scanner-content">
+                  <div className="viewfinder"></div>
+                  <p className="scanner-prompt">Align the book's barcode within the frame</p>
+              </div>
               <button className="close-scanner-btn" onClick={() => setIsScannerOpen(false)}>×</button>
           </div>
       )}
