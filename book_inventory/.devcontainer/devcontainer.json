@@ -1,0 +1,32 @@
+{
+  "name": "Book Keeper Dev Environment",
+  // Use a pre-built Node.js image for our environment
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:0-18",
+
+  // Forward the ports your app uses so you can access them in the browser
+  "forwardPorts": [3000, 5000],
+
+  // Tell VS Code to open these two folders in the workspace
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces,type=bind,consistency=cached",
+  "workspaceFolder": "/workspaces",
+
+  // This command runs automatically after the codespace is created.
+  // It installs all dependencies for both the client and server.
+  "postCreateCommand": "cd client && npm install && cd ../server && npm install",
+
+  // Add VS Code extensions that are useful for this project
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "mongodb.mongodb-vscode"
+      ]
+    }
+  },
+
+  // Use the MONGO_URI secret you created in your GitHub repository settings
+  "remoteEnv": {
+    "MONGO_URI": "${secret:MONGO_URI}"
+  }
+}
