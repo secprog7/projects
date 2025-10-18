@@ -1,0 +1,6 @@
+credentials/
+*.json
+venv/
+__pycache__/
+results/*.txt
+audio/
