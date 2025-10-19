@@ -20,7 +20,7 @@ def list_audio_devices():
             print(f"    Sample Rate: {int(info['defaultSampleRate'])} Hz")
             
             # Highlight USB devices
-            if 'USB' in info['name'] or '0.2.C' in info['name']:
+            if 'USB' in info['name'] or 'Focusrite' in info['name']:
                 print(f"    ✅ USB AUDIO INTERFACE DETECTED!")
                 usb_found = True
             print()
@@ -28,7 +28,7 @@ def list_audio_devices():
     p.terminate()
     
     if not usb_found:
-        print("⚠️  USB Audio Interface (0.2.C) not detected!")
+        print("⚠️  USB Audio Interface not detected!")
         print("   Check that device is plugged in and drivers are installed.\n")
     else:
         print("✅ USB Audio Interface ready for testing!\n")

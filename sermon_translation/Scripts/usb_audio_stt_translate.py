@@ -4,6 +4,8 @@ import threading
 from typing import Generator
 from google.cloud import speech
 from google.cloud import translate_v2 as translate
+from datetime import datetime
+import os
 
 # Audio recording parameters
 RATE = 16000  # Sample rate (Hz)
@@ -21,12 +23,12 @@ class AudioStreamer:
         self.is_recording = False
         
     def _find_usb_device(self):
-        """Find USB Audio Interface device (0.2.C)"""
+        """Find USB Audio Interface device"""
         print("\nAvailable audio devices:")
         for i in range(self.audio.get_device_count()):
             info = self.audio.get_device_info_by_index(i)
             print(f"  [{i}] {info['name']}")
-            if "USB" in info['name'] or "0.2.C" in info['name']:
+            if "USB" in info['name'] or "Focusrite" in info['name']:
                 print(f"✓ Found USB device: {info['name']}")
                 return i
         print("⚠ USB device not found, using default input")
@@ -73,7 +75,7 @@ class AudioStreamer:
 
 
 class SpeechToTextTranslator:
-    """Handles Google Cloud Speech-to-Text and Translation"""
+    """Handles Google Cloud Speech-to-Text and Translation with real-time file saving"""
     
     def __init__(self, source_language="en-US", target_language="es"):
         """
@@ -87,27 +89,47 @@ class SpeechToTextTranslator:
         self.translate_client = translate.Client()
         self.source_language = source_language
         self.target_language = target_language
+        self.output_file = None
         
-    def process_stream(self, audio_streamer, translate_enabled=True):
+    def process_stream(self, audio_streamer, translate_enabled=True, save_to_file=True):
         """
         Process audio stream with STT and optional translation
         
         Args:
             audio_streamer: AudioStreamer instance
             translate_enabled: Whether to translate transcriptions
+            save_to_file: Whether to save translations to a text file in real-time
         """
+        # Create output file with timestamp
+        if save_to_file:
+            os.makedirs("results", exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"results/live_translation_{timestamp}.txt"
+            self.output_file = open(output_filename, 'w', encoding='utf-8')
+            
+            # Write header
+            self.output_file.write("LIVE TRANSLATION SESSION\n")
+            self.output_file.write("="*60 + "\n")
+            self.output_file.write(f"Date: {datetime.now()}\n")
+            self.output_file.write(f"Source Language: {self.source_language}\n")
+            self.output_file.write(f"Target Language: {self.target_language}\n")
+            self.output_file.write("="*60 + "\n\n")
+            self.output_file.flush()
+            
+            print(f"\n💾 Saving translations to: {output_filename}\n")
+        
         # Configure STT
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
             sample_rate_hertz=RATE,
             language_code=self.source_language,
             enable_automatic_punctuation=True,
-            model="default",  # Use "latest_long" for better accuracy
+            model="default",
         )
         
         streaming_config = speech.StreamingRecognitionConfig(
             config=config,
-            interim_results=True  # Get partial results while speaking
+            interim_results=True
         )
         
         # Create request generator
@@ -120,6 +142,8 @@ class SpeechToTextTranslator:
         if translate_enabled:
             print(f"🌐 Translating to {self.target_language}...\n")
         
+        segment_count = 0
+        
         try:
             responses = self.speech_client.streaming_recognize(
                 streaming_config, 
@@ -131,20 +155,45 @@ class SpeechToTextTranslator:
                     transcript = result.alternatives[0].transcript
                     
                     if result.is_final:
+                        segment_count += 1
+                        timestamp_str = datetime.now().strftime("%H:%M:%S")
+                        
                         # Final transcription
-                        print(f"📝 Original: {transcript}")
+                        print(f"📝 [{timestamp_str}] Original: {transcript}")
                         
                         # Translate if enabled
                         if translate_enabled:
                             translation = self.translate_text(transcript)
-                            print(f"🌍 Translated: {translation}")
+                            print(f"🌍 [{timestamp_str}] Translated: {translation}")
+                            
+                            # Save to file in real-time
+                            if self.output_file:
+                                self.output_file.write(f"[{timestamp_str}] Segment {segment_count}\n")
+                                self.output_file.write(f"Original ({self.source_language}): {transcript}\n")
+                                self.output_file.write(f"Translation ({self.target_language}): {translation}\n")
+                                self.output_file.write("-" * 60 + "\n\n")
+                                self.output_file.flush()  # Write immediately
+                        else:
+                            # Save transcription only
+                            if self.output_file:
+                                self.output_file.write(f"[{timestamp_str}] {transcript}\n\n")
+                                self.output_file.flush()
+                        
                         print("-" * 60)
                     else:
-                        # Interim result (partial transcription)
+                        # Interim result
                         print(f"💭 {transcript}", end='\r')
                         
         except Exception as e:
             print(f"\n❌ Error: {e}")
+        finally:
+            # Close output file
+            if self.output_file:
+                self.output_file.write("\n" + "="*60 + "\n")
+                self.output_file.write(f"Session ended: {datetime.now()}\n")
+                self.output_file.write(f"Total segments: {segment_count}\n")
+                self.output_file.close()
+                print(f"\n✅ Translation saved to: {output_filename}")
     
     def translate_text(self, text):
         """
@@ -160,7 +209,7 @@ class SpeechToTextTranslator:
             result = self.translate_client.translate(
                 text,
                 target_language=self.target_language,
-                source_language=self.source_language.split('-')[0]  # Extract base language
+                source_language=self.source_language.split('-')[0]
             )
             return result['translatedText']
         except Exception as e:
@@ -178,10 +227,6 @@ if __name__ == "__main__":
     TARGET_LANG = "es"     # Language to translate to
     ENABLE_TRANSLATION = True
     
-    # Supported language codes:
-    # Speech: "en-US", "es-ES", "fr-FR", "de-DE", "ja-JP", "zh-CN", etc.
-    # Translation: "es", "fr", "de", "ja", "zh", "ar", "hi", etc.
-    
     # Initialize components
     streamer = AudioStreamer()
     translator = SpeechToTextTranslator(
@@ -194,7 +239,12 @@ if __name__ == "__main__":
         streamer.start_stream()
         
         # Process audio with STT and translation
-        translator.process_stream(streamer, translate_enabled=ENABLE_TRANSLATION)
+        # save_to_file=True will create a timestamped file in results/
+        translator.process_stream(
+            streamer, 
+            translate_enabled=ENABLE_TRANSLATION,
+            save_to_file=True
+        )
         
     except KeyboardInterrupt:
         print("\n\n⏹️  Stopping...")
