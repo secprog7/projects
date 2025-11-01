@@ -228,7 +228,7 @@ class LiveSTTTester:
         
         return transcription.strip(), processing_time, confidence_scores
     
-    def test_gold_standard_translation(self, audio_file, target_language="es"):
+    def test_gold_standard_translation(self, audio_file, target_language="pt"):
         """
         Complete pipeline test: English audio → Transcription → Spanish Translation
         Tests the full STT + Translation workflow with gold standard file
@@ -529,12 +529,12 @@ if __name__ == "__main__":
         
     elif choice == "4":
         print("\n🌐 Running full system with translation...")
-        from usb_audio_stt_translate import AudioStreamer, SpeechToTextTranslator
+        from usb_audio_stt_translate import AudioStreamer, SermonTranslator
         
         streamer = AudioStreamer()
-        translator = SpeechToTextTranslator(
+        translator = SermonTranslator(
             source_language="en-US",
-            target_language="es"
+            target_language="pt"
         )
         
         try:
@@ -546,6 +546,6 @@ if __name__ == "__main__":
     
     elif choice == "5":
         audio_path = input("Path to gold standard audio file: ").strip()
-        tester.test_gold_standard_translation(audio_path, target_language="es")
+        tester.test_gold_standard_translation(audio_path, target_language="pt")
     else:
         print("Invalid choice")
