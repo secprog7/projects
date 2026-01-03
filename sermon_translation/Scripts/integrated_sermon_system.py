@@ -74,12 +74,13 @@ OUTPUT_LANGUAGES = {
 
 
 class DualLanguageDisplay:
-    """Display showing 2 languages side-by-side"""
+    """Display showing 2 languages side-by-side with pause/resume control"""
     
     def __init__(self, language1_name, language2_name, font_size=24):
         self.font_size = font_size
         self.text_queue = queue.Queue()
         self.is_running = False
+        self.is_paused = False  # Pause state
         
         self.lang1_lines = deque(maxlen=3)
         self.lang2_lines = deque(maxlen=3)
@@ -93,7 +94,7 @@ class DualLanguageDisplay:
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         
-        window_height = 400
+        window_height = 450
         window_width = int(screen_width * 0.85)
         
         x_position = (screen_width - window_width) // 2
@@ -105,10 +106,22 @@ class DualLanguageDisplay:
         # Fonts
         self.display_font = font.Font(family="Arial", size=self.font_size, weight="bold")
         self.label_font = font.Font(family="Arial", size=14, weight="bold")
+        self.status_font = font.Font(family="Arial", size=12, weight="bold")
+        
+        # Status bar (top)
+        self.status_bar = tk.Label(
+            self.root,
+            text="🟢 ACTIVE - Ctrl+Shift+P to pause",
+            font=self.status_font,
+            fg='white',
+            bg='green',
+            pady=8
+        )
+        self.status_bar.pack(fill=tk.X)
         
         # Main container
         main_frame = tk.Frame(self.root, bg='black')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         # Language 1 section (top)
         lang1_frame = tk.Frame(main_frame, bg='black')
@@ -162,6 +175,17 @@ class DualLanguageDisplay:
         )
         self.lang2_text.pack(expand=True)
         
+        # Control info bar (bottom)
+        control_info = tk.Label(
+            self.root,
+            text="Controls: [Ctrl+Shift+P] Pause  [Ctrl+Shift+R] Resume  [Ctrl+Shift+S] Stop",
+            font=('Arial', 9),
+            fg='lightgray',
+            bg='black',
+            pady=5
+        )
+        control_info.pack(fill=tk.X)
+        
         # Control buttons
         control_frame = tk.Frame(self.root, bg='black')
         control_frame.pack(side=tk.BOTTOM, pady=5)
@@ -182,6 +206,20 @@ class DualLanguageDisplay:
         self.is_running = True
         self.update_thread = threading.Thread(target=self._process_queue, daemon=True)
         self.update_thread.start()
+    
+    def set_paused(self, paused):
+        """Update pause state and display"""
+        self.is_paused = paused
+        if paused:
+            self.status_bar.config(
+                text="🟡 PAUSED - Ctrl+Shift+R to resume",
+                bg='orange'
+            )
+        else:
+            self.status_bar.config(
+                text="🟢 ACTIVE - Ctrl+Shift+P to pause",
+                bg='green'
+            )
     
     def add_translation(self, lang1_text, lang2_text):
         """Add translation pair to display"""
@@ -295,7 +333,7 @@ class AudioStreamer:
 
 
 class MultiLanguageSermonSystem:
-    """Complete multi-language translation system"""
+    """Complete multi-language translation system with pause/resume"""
     
     SERMON_CONTEXT_HINTS = [
         "expository sermon", "verse by verse", "Biblical exposition",
@@ -325,12 +363,28 @@ class MultiLanguageSermonSystem:
         self.display_languages = display_languages
         self.output_file = None
         
+        # Pause/resume control
+        self.is_paused = True  # Start paused
+        self.pause_start_time = None
+        self.total_pause_time = 0
+        self.pause_count = 0
+        self.active_start_time = None
+        self.total_active_time = 0
+        
         # Initialize display
         self.display = DualLanguageDisplay(
             display_languages[0][1],
             display_languages[1][1],
             font_size=28
         )
+        
+        # Set up keyboard bindings
+        self.display.root.bind('<Control-Shift-P>', self._pause_translation)
+        self.display.root.bind('<Control-Shift-p>', self._pause_translation)
+        self.display.root.bind('<Control-Shift-R>', self._resume_translation)
+        self.display.root.bind('<Control-Shift-r>', self._resume_translation)
+        self.display.root.bind('<Control-Shift-S>', self._stop_system)
+        self.display.root.bind('<Control-Shift-s>', self._stop_system)
         
         # Initialize audio
         self.audio_streamer = AudioStreamer()
@@ -339,6 +393,74 @@ class MultiLanguageSermonSystem:
         print(f"   Input: {source_language[1]}")
         print(f"   Outputs: {', '.join([lang[1] for lang in target_languages])}")
         print(f"   Display: {display_languages[0][1]} + {display_languages[1][1]}")
+        print(f"\n⏯️  PAUSE/RESUME CONTROLS:")
+        print(f"   Ctrl+Shift+P - Pause translation")
+        print(f"   Ctrl+Shift+R - Resume translation")
+        print(f"   Ctrl+Shift+S - Stop system")
+    
+    def _pause_translation(self, event=None):
+        """Pause translation (Ctrl+Shift+P)"""
+        if not self.is_paused:
+            self.is_paused = True
+            self.pause_start_time = datetime.now()
+            self.pause_count += 1
+            
+            # Update display
+            self.display.set_paused(True)
+            
+            # Calculate active time
+            if self.active_start_time:
+                self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
+            
+            # Log to console
+            timestamp_str = datetime.now().strftime("%H:%M:%S")
+            print(f"\n⏸️  [{timestamp_str}] TRANSLATION PAUSED")
+            print(f"   (Press Ctrl+Shift+R to resume)")
+            
+            # Log to file
+            if self.output_file:
+                self.output_file.write(f"\n[{timestamp_str}] ⏸️  === TRANSLATION PAUSED ===\n")
+                self.output_file.write(f"Duration active: {self._format_duration(self.total_active_time)}\n\n")
+                self.output_file.flush()
+    
+    def _resume_translation(self, event=None):
+        """Resume translation (Ctrl+Shift+R)"""
+        if self.is_paused:
+            self.is_paused = False
+            self.active_start_time = datetime.now()
+            
+            # Update display
+            self.display.set_paused(False)
+            
+            # Calculate pause time
+            if self.pause_start_time:
+                pause_duration = (datetime.now() - self.pause_start_time).total_seconds()
+                self.total_pause_time += pause_duration
+            
+            # Log to console
+            timestamp_str = datetime.now().strftime("%H:%M:%S")
+            print(f"\n▶️  [{timestamp_str}] TRANSLATION RESUMED")
+            if self.pause_start_time:
+                print(f"   Pause duration: {self._format_duration(pause_duration)}")
+            
+            # Log to file
+            if self.output_file:
+                self.output_file.write(f"[{timestamp_str}] ▶️  === TRANSLATION RESUMED ===\n")
+                if self.pause_start_time:
+                    self.output_file.write(f"Pause duration: {self._format_duration(pause_duration)}\n")
+                self.output_file.write("\n")
+                self.output_file.flush()
+    
+    def _stop_system(self, event=None):
+        """Stop system completely (Ctrl+Shift+S)"""
+        print("\n🛑 Stopping system via keyboard command...")
+        self.display.stop()
+    
+    def _format_duration(self, seconds):
+        """Format duration in seconds to readable format"""
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}m {secs}s"
     
     def translate_to_multiple(self, text):
         """Translate text to all target languages"""
@@ -379,6 +501,8 @@ class MultiLanguageSermonSystem:
         self.output_file.write(f"Input Language: {self.source_language[1]}\n")
         self.output_file.write(f"Output Languages: {', '.join([l[1] for l in self.target_languages])}\n")
         self.output_file.write("="*70 + "\n\n")
+        self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] 🟡 System ready (PAUSED)\n")
+        self.output_file.write("   Press Ctrl+Shift+R to start translation\n\n")
         self.output_file.flush()
         
         print(f"\n💾 Saving to: {output_filename}")
@@ -388,10 +512,17 @@ class MultiLanguageSermonSystem:
         audio_thread.start()
         
         print("\n🎬 System started!")
-        print("   - Audio capture running")
-        print("   - Multi-language translation active")
+        print("   - Audio capture ready")
+        print("   - Multi-language translation configured")
         print("   - Display showing")
-        print("\nPress Ctrl+C in terminal or close display window to stop.\n")
+        print(f"\n🟡 STATUS: PAUSED - Press Ctrl+Shift+R to start translation")
+        print("\nControls:")
+        print("   Ctrl+Shift+R - Start/Resume translation")
+        print("   Ctrl+Shift+P - Pause translation")
+        print("   Ctrl+Shift+S - Stop system\n")
+        
+        # Set initial paused state
+        self.display.set_paused(True)
         
         # Run display
         try:
@@ -430,10 +561,16 @@ class MultiLanguageSermonSystem:
         segment_count = 0
         
         while self.display.is_running:
+            # Wait if paused
+            if self.is_paused:
+                import time
+                time.sleep(0.5)
+                continue
+            
             try:
                 def request_generator():
                     for chunk in self.audio_streamer.audio_generator():
-                        if not self.display.is_running:
+                        if not self.display.is_running or self.is_paused:
                             break
                         yield speech.StreamingRecognizeRequest(audio_content=chunk)
                 
@@ -445,7 +582,7 @@ class MultiLanguageSermonSystem:
                 )
                 
                 for response in responses:
-                    if not self.display.is_running:
+                    if not self.display.is_running or self.is_paused:
                         break
                         
                     for result in response.results:
@@ -486,7 +623,8 @@ class MultiLanguageSermonSystem:
             except Exception as e:
                 error_msg = str(e)
                 if "Audio Timeout" in error_msg or "400" in error_msg:
-                    print(f"\n⚠️  Stream timeout - restarting recognition...")
+                    if not self.is_paused:
+                        print(f"\n⚠️  Stream timeout - restarting recognition...")
                     import time
                     time.sleep(1)
                     continue
@@ -498,15 +636,30 @@ class MultiLanguageSermonSystem:
         """Stop the system"""
         print("\n⏹️  Stopping system...")
         
+        # Calculate final times
+        if self.active_start_time and not self.is_paused:
+            self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
+        
         self.audio_streamer.stop_stream()
         self.display.stop()
         
         if self.output_file:
             self.output_file.write("\n" + "="*70 + "\n")
+            self.output_file.write("SESSION SUMMARY\n")
+            self.output_file.write("="*70 + "\n")
             self.output_file.write(f"Session ended: {datetime.now()}\n")
+            self.output_file.write(f"Total active time: {self._format_duration(self.total_active_time)}\n")
+            self.output_file.write(f"Total pause time: {self._format_duration(self.total_pause_time)}\n")
+            self.output_file.write(f"Pause count: {self.pause_count}\n")
+            self.output_file.write(f"Languages: {', '.join([l[1] for l in self.target_languages])}\n")
+            self.output_file.write("="*70 + "\n")
             self.output_file.close()
         
         print("✅ System stopped.")
+        print(f"\n📊 Session Statistics:")
+        print(f"   Active time: {self._format_duration(self.total_active_time)}")
+        print(f"   Pause time: {self._format_duration(self.total_pause_time)}")
+        print(f"   Pauses: {self.pause_count} times")
 
 
 def configure_system():
