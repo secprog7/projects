@@ -1,3 +1,4 @@
+
 """
 Integrated Sermon Translation System with Live Subtitle Display
 
@@ -411,61 +412,80 @@ class IntegratedSermonSystem:
         
         streaming_config = speech.StreamingRecognitionConfig(
             config=config,
-            interim_results=True
+            interim_results=True,
+            single_utterance=False  # Keep listening continuously
         )
         
         # Start audio capture
         self.audio_streamer.start_stream()
         
-        # Create request generator
-        def request_generator():
-            for chunk in self.audio_streamer.audio_generator():
-                yield speech.StreamingRecognizeRequest(audio_content=chunk)
-        
         segment_count = 0
         
-        try:
-            responses = self.speech_client.streaming_recognize(
-                streaming_config,
-                request_generator()
-            )
+        # Restart streaming if timeout occurs
+        while self.display.is_running:
+            try:
+                # Create request generator
+                def request_generator():
+                    for chunk in self.audio_streamer.audio_generator():
+                        if not self.display.is_running:
+                            break
+                        yield speech.StreamingRecognizeRequest(audio_content=chunk)
+                
+                print(f"\n🎧 Starting speech recognition stream...")
+                
+                responses = self.speech_client.streaming_recognize(
+                    streaming_config,
+                    request_generator()
+                )
+                
+                for response in responses:
+                    if not self.display.is_running:
+                        break
+                        
+                    for result in response.results:
+                        transcript = result.alternatives[0].transcript
+                        
+                        if result.is_final:
+                            segment_count += 1
+                            timestamp_str = datetime.now().strftime("%H:%M:%S")
+                            
+                            # Display English in console
+                            print(f"📝 [{timestamp_str}] EN: {transcript}")
+                            
+                            # Translate immediately
+                            translation = self.translate_text(transcript)
+                            print(f"🌐 [{timestamp_str}] {self.target_language.upper()}: {translation}")
+                            
+                            # Send to display
+                            self.display.add_text(
+                                source_text=transcript,
+                                target_text=translation
+                            )
+                            
+                            # Save to file
+                            if self.output_file:
+                                self.output_file.write(f"[{timestamp_str}] Segment {segment_count}\n")
+                                self.output_file.write(f"English: {transcript}\n")
+                                self.output_file.write(f"{self.target_language.upper()}: {translation}\n")
+                                self.output_file.write("-" * 60 + "\n\n")
+                                self.output_file.flush()
+                            
+                            print("-" * 60)
+                        else:
+                            # Show interim in console only
+                            print(f"💭 {transcript}", end='\r')
             
-            for response in responses:
-                for result in response.results:
-                    transcript = result.alternatives[0].transcript
-                    
-                    if result.is_final:
-                        segment_count += 1
-                        timestamp_str = datetime.now().strftime("%H:%M:%S")
-                        
-                        # Display English in console
-                        print(f"📝 [{timestamp_str}] EN: {transcript}")
-                        
-                        # Translate immediately
-                        translation = self.translate_text(transcript)
-                        print(f"🌐 [{timestamp_str}] {self.target_language.upper()}: {translation}")
-                        
-                        # Send to display
-                        self.display.add_text(
-                            source_text=transcript,
-                            target_text=translation
-                        )
-                        
-                        # Save to file
-                        if self.output_file:
-                            self.output_file.write(f"[{timestamp_str}] Segment {segment_count}\n")
-                            self.output_file.write(f"English: {transcript}\n")
-                            self.output_file.write(f"{self.target_language.upper()}: {translation}\n")
-                            self.output_file.write("-" * 60 + "\n\n")
-                            self.output_file.flush()
-                        
-                        print("-" * 60)
-                    else:
-                        # Show interim in console only
-                        print(f"💭 {transcript}", end='\r')
-        
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
+            except Exception as e:
+                error_msg = str(e)
+                if "Audio Timeout" in error_msg or "400" in error_msg:
+                    print(f"\n⚠️  Stream timeout - restarting recognition...")
+                    # Wait a moment and restart
+                    import time
+                    time.sleep(1)
+                    continue  # Restart the streaming loop
+                else:
+                    print(f"\n❌ Error: {e}")
+                    break
     
     def stop(self):
         """Stop the system"""
@@ -489,17 +509,103 @@ if __name__ == "__main__":
     print("   Audio → STT → Translation → Live Display")
     print("=" * 60)
     
-    # Configuration
-    print("\nConfiguration:")
+    # Language configuration
+    print("\n📋 LANGUAGE CONFIGURATION")
+    print("-" * 60)
+    
+    # Source language selection
+    print("\nSOURCE LANGUAGE (audio input from microphone):")
+    print("1. English (US)")
+    print("2. English (UK)")
+    print("3. Portuguese (Brazil)")
+    print("4. Portuguese (Portugal)")
+    print("5. Spanish (Spain)")
+    print("6. Spanish (Latin America)")
+    print("7. French")
+    print("8. Other (enter code)")
+    
+    source_choice = input("\nSelect source language (1-8): ").strip()
+    
+    source_languages = {
+        "1": "en-US",
+        "2": "en-GB",
+        "3": "pt-BR",
+        "4": "pt-PT",
+        "5": "es-ES",
+        "6": "es-MX",
+        "7": "fr-FR",
+    }
+    
+    if source_choice == "8":
+        SOURCE_LANG = input("Enter source language code (e.g., en-US, pt-BR): ").strip()
+    else:
+        SOURCE_LANG = source_languages.get(source_choice, "en-US")
+    
+    print(f"✓ Source language: {SOURCE_LANG}")
+    
+    # Target language selection
+    print("\nTARGET LANGUAGE (translation output to display):")
+    print("1. Portuguese (Brazil)")
+    print("2. Portuguese (Portugal)")
+    print("3. Spanish (Spain)")
+    print("4. Spanish (Latin America)")
+    print("5. French")
+    print("6. English (US)")
+    print("7. English (UK)")
+    print("8. German")
+    print("9. Italian")
+    print("10. Korean")
+    print("11. Chinese (Simplified)")
+    print("12. Japanese")
+    print("13. Other (enter code)")
+    
+    target_choice = input("\nSelect target language (1-13): ").strip()
+    
+    target_languages = {
+        "1": "pt-BR",
+        "2": "pt-PT",
+        "3": "es-ES",
+        "4": "es-MX",
+        "5": "fr-FR",
+        "6": "en-US",
+        "7": "en-GB",
+        "8": "de",
+        "9": "it",
+        "10": "ko",
+        "11": "zh-CN",
+        "12": "ja",
+    }
+    
+    if target_choice == "13":
+        TARGET_LANG = input("Enter target language code (e.g., pt, es, fr): ").strip()
+    else:
+        TARGET_LANG = target_languages.get(target_choice, "pt-BR")
+    
+    print(f"✓ Target language: {TARGET_LANG}")
+    
+    # Display mode
+    print("\nDISPLAY MODE:")
     print("1. Translation only (target language)")
     print("2. Dual language (source + translation)")
     
     choice = input("\nSelect display mode (1 or 2): ").strip()
     show_both = (choice == "2")
     
-    # Language configuration
-    SOURCE_LANG = "en-US"
-    TARGET_LANG = input("\nTarget language (pt/es/fr): ").strip().lower() or "pt"
+    # Confirmation
+    print("\n" + "=" * 60)
+    print("CONFIGURATION SUMMARY")
+    print("=" * 60)
+    print(f"Source Language (Audio In): {SOURCE_LANG}")
+    print(f"Target Language (Display): {TARGET_LANG}")
+    print(f"Display Mode: {'Dual Language' if show_both else 'Translation Only'}")
+    print(f"File Saving: Enabled")
+    print("=" * 60)
+    
+    confirm = input("\nProceed with this configuration? (Y/n): ").strip().lower()
+    
+    if confirm and confirm != 'y':
+        print("Configuration cancelled.")
+        exit()
     
     # Create and start system
     system = IntegratedSermonSystem(
