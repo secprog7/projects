@@ -4,3 +4,4 @@ venv/
 __pycache__/
 results/*.txt
 audio/
+test_results/
