@@ -62,7 +62,7 @@ def check_ffmpeg():
 FFMPEG_AVAILABLE = check_ffmpeg()
 
 if not FFMPEG_AVAILABLE:
-    print("⚠️  ffmpeg not found. MP3 support disabled.")
+    print("WARNING:  ffmpeg not found. MP3 support disabled.")
     print("   Install ffmpeg: https://ffmpeg.org/download.html")
     print("   Or use: winget install ffmpeg")
 
@@ -96,6 +96,7 @@ TEST_MODES = {
         "max_latency": None,  # No limit
         "catchup_enabled": False,
         "catchup_threshold": None,
+        "chunk_split_enabled": False,
     },
     1: {
         "name": "Fast Display",
@@ -108,6 +109,7 @@ TEST_MODES = {
         "max_latency": None,
         "catchup_enabled": False,
         "catchup_threshold": None,
+        "chunk_split_enabled": False,
     },
     2: {
         "name": "Smart Queue",
@@ -123,6 +125,7 @@ TEST_MODES = {
         "catchup_reading_speed": 400,
         "catchup_min_display": 1.5,
         "catchup_fade_duration": 0.2,
+        "chunk_split_enabled": False,
     },
     3: {
         "name": "Latency Control",
@@ -139,6 +142,7 @@ TEST_MODES = {
         "catchup_min_display": 1.5,
         "catchup_fade_duration": 0.2,
         "skip_when_exceeded": True,  # Skip old items if over max latency
+        "chunk_split_enabled": False,
     },
     4: {
         "name": "Interim Results",
@@ -152,6 +156,48 @@ TEST_MODES = {
         "max_latency": None,
         "catchup_enabled": False,
         "catchup_threshold": None,
+        "chunk_split_enabled": False,
+    },
+    5: {
+        "name": "Optimized Speed",
+        "description": "Balanced settings for ~5-7 sec latency without losing translations",
+        "reading_speed": 280,  # Slightly faster (vs 240 baseline)
+        "min_display_time": 2.5,  # Shorter minimum (vs 3)
+        "fade_duration": 0.3,  # Quick fades (vs 1.0)
+        "buffer_time": 0.5,  # Less buffer (vs 1.0)
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": False,
+    },
+    6: {
+        "name": "Congregation Friendly",
+        "description": "Comfortable reading speed (220 wpm) with optimized display timing",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": False,
+    },
+    7: {
+        "name": "Chunk Splitting",
+        "description": "Splits long segments (40+ words) for consistent display timing",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 40,  # Max words per chunk
+        "chunk_min_size": 15,  # Minimum words in a chunk
     },
 }
 
@@ -212,6 +258,13 @@ class SegmentData:
     was_skipped: bool = False
     queue_depth_at_queue: int = 0
     queue_depth_at_display: int = 0
+    
+    # Chunk splitting fields
+    original_segment_id: int = None  # ID of parent segment (if this is a chunk)
+    chunk_number: int = 1  # Which chunk this is (1, 2, 3...)
+    total_chunks: int = 1  # Total chunks from parent segment
+    was_split: bool = False  # True if this came from splitting
+    original_word_count: int = None  # Word count before splitting
     
     @property
     def latency_total(self) -> float:
@@ -290,7 +343,15 @@ class TestSession:
 class TestHarnessDisplay:
     """Display with real-time latency indicator and test mode info"""
     
-    def __init__(self, language1_name, language2_name, test_mode_config, font_size=24):
+    def __init__(self, language_names, test_mode_config, font_size=24):
+        """
+        Initialize display with 1-4 languages
+        
+        Args:
+            language_names: List of language names (1-4 languages)
+            test_mode_config: Test mode configuration dict
+            font_size: Base font size
+        """
         self.font_size = font_size
         self.config = test_mode_config
         self.text_queue = queue.Queue()
@@ -298,9 +359,12 @@ class TestHarnessDisplay:
         self.is_paused = False
         self.in_catchup_mode = False
         
-        # Current text being displayed
-        self.current_lang1 = ""
-        self.current_lang2 = ""
+        # Store language names
+        self.language_names = language_names
+        self.num_languages = len(language_names)
+        
+        # Current text being displayed (list for each language)
+        self.current_texts = [""] * self.num_languages
         self.current_is_interim = False
         self.display_start_time = None
         
@@ -319,7 +383,10 @@ class TestHarnessDisplay:
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         
-        window_height = 500  # Slightly taller for test info
+        # Adjust height based on number of languages
+        base_height = 300
+        per_lang_height = 100
+        window_height = base_height + (self.num_languages * per_lang_height)
         window_width = int(screen_width * 0.85)
         
         x_position = (screen_width - window_width) // 2
@@ -328,10 +395,11 @@ class TestHarnessDisplay:
         self.root.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         self.root.attributes('-topmost', True)
         
-        # Fonts
-        self.display_font = font.Font(family="Arial", size=self.font_size, weight="bold")
-        self.display_font_italic = font.Font(family="Arial", size=self.font_size, weight="bold", slant="italic")
-        self.label_font = font.Font(family="Arial", size=14, weight="bold")
+        # Fonts - adjust size based on number of languages
+        adjusted_font_size = max(16, self.font_size - (self.num_languages - 1) * 2)
+        self.display_font = font.Font(family="Arial", size=adjusted_font_size, weight="bold")
+        self.display_font_italic = font.Font(family="Arial", size=adjusted_font_size, weight="bold", slant="italic")
+        self.label_font = font.Font(family="Arial", size=12, weight="bold")
         self.status_font = font.Font(family="Arial", size=12, weight="bold")
         self.metrics_font = font.Font(family="Consolas", size=11, weight="bold")
         
@@ -341,7 +409,7 @@ class TestHarnessDisplay:
         
         self.test_mode_label = tk.Label(
             test_info_frame,
-            text=f"🧪 TEST MODE {list(TEST_MODES.keys())[list(TEST_MODES.values()).index(test_mode_config)]}: {test_mode_config['name']}",
+            text=f"TEST MODE {list(TEST_MODES.keys())[list(TEST_MODES.values()).index(test_mode_config)]}: {test_mode_config['name']}",
             font=self.status_font,
             fg='#00ff88',
             bg='#1a1a2e',
@@ -363,24 +431,12 @@ class TestHarnessDisplay:
         metrics_frame = tk.Frame(self.root, bg='#0f0f23')
         metrics_frame.pack(fill=tk.X)
         
-        # Latency indicator
-        self.latency_label = tk.Label(
-            metrics_frame,
-            text="⏱️ Latency: 0.0s",
-            font=self.metrics_font,
-            fg='#00ff00',
-            bg='#0f0f23',
-            pady=8,
-            padx=15
-        )
-        self.latency_label.pack(side=tk.LEFT)
-        
-        # Queue depth indicator
+        # Queue depth indicator (accurate real-time metric)
         self.queue_label = tk.Label(
             metrics_frame,
-            text="📋 Queue: 0",
+            text="Queue: 0",
             font=self.metrics_font,
-            fg='#ffff00',
+            fg='#00ff00',
             bg='#0f0f23',
             pady=8,
             padx=15
@@ -390,7 +446,7 @@ class TestHarnessDisplay:
         # Segments counter
         self.segments_label = tk.Label(
             metrics_frame,
-            text="📊 Displayed: 0 | Skipped: 0",
+            text="Displayed: 0 | Skipped: 0",
             font=self.metrics_font,
             fg='#aaaaaa',
             bg='#0f0f23',
@@ -414,7 +470,7 @@ class TestHarnessDisplay:
         # === STATUS BAR ===
         self.status_bar = tk.Label(
             self.root,
-            text="🟢 ACTIVE - Ctrl+Shift+P to pause",
+            text="ACTIVE - Ctrl+Shift+P to pause",
             font=self.status_font,
             fg='white',
             bg='green',
@@ -426,57 +482,48 @@ class TestHarnessDisplay:
         main_frame = tk.Frame(self.root, bg='black')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        # Language 1 section
-        lang1_frame = tk.Frame(main_frame, bg='black')
-        lang1_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # Colors for different languages
+        header_colors = ['yellow', 'cyan', '#ff8888', '#88ff88']
         
-        self.lang1_label_header = tk.Label(
-            lang1_frame,
-            text=language1_name.upper(),
-            font=self.label_font,
-            fg='yellow',
-            bg='black'
-        )
-        self.lang1_label_header.pack()
+        # Create language sections dynamically
+        self.lang_frames = []
+        self.lang_headers = []
+        self.lang_texts = []
         
-        self.lang1_text = tk.Label(
-            lang1_frame,
-            text="",
-            font=self.display_font,
-            fg='white',
-            bg='black',
-            justify='center',
-            wraplength=window_width - 100
-        )
-        self.lang1_text.pack(expand=True)
-        
-        # Separator
-        separator = tk.Frame(main_frame, bg='gray', height=2)
-        separator.pack(fill=tk.X, pady=5)
-        
-        # Language 2 section
-        lang2_frame = tk.Frame(main_frame, bg='black')
-        lang2_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
-        
-        self.lang2_label_header = tk.Label(
-            lang2_frame,
-            text=language2_name.upper(),
-            font=self.label_font,
-            fg='cyan',
-            bg='black'
-        )
-        self.lang2_label_header.pack()
-        
-        self.lang2_text = tk.Label(
-            lang2_frame,
-            text="",
-            font=self.display_font,
-            fg='white',
-            bg='black',
-            justify='center',
-            wraplength=window_width - 100
-        )
-        self.lang2_text.pack(expand=True)
+        for i, lang_name in enumerate(self.language_names):
+            # Language frame
+            lang_frame = tk.Frame(main_frame, bg='black')
+            lang_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+            self.lang_frames.append(lang_frame)
+            
+            # Language header
+            header = tk.Label(
+                lang_frame,
+                text=lang_name.upper(),
+                font=self.label_font,
+                fg=header_colors[i % len(header_colors)],
+                bg='black'
+            )
+            header.pack()
+            self.lang_headers.append(header)
+            
+            # Language text
+            text_label = tk.Label(
+                lang_frame,
+                text="",
+                font=self.display_font,
+                fg='white',
+                bg='black',
+                justify='center',
+                wraplength=window_width - 100
+            )
+            text_label.pack(expand=True)
+            self.lang_texts.append(text_label)
+            
+            # Separator (except after last language)
+            if i < len(self.language_names) - 1:
+                separator = tk.Frame(main_frame, bg='gray', height=2)
+                separator.pack(fill=tk.X, pady=3)
         
         # === CONTROL BAR ===
         control_frame = tk.Frame(self.root, bg='black')
@@ -550,43 +597,31 @@ class TestHarnessDisplay:
         """Update metrics display periodically"""
         while self.is_running:
             try:
-                # Update latency color based on value
-                if self.current_latency < 10:
-                    latency_color = '#00ff00'  # Green
-                elif self.current_latency < 15:
-                    latency_color = '#ffff00'  # Yellow
-                elif self.current_latency < 20:
-                    latency_color = '#ff8800'  # Orange
-                else:
-                    latency_color = '#ff0000'  # Red
-                
-                self.root.after(0, lambda c=latency_color: self.latency_label.config(
-                    text=f"⏱️ Latency: {self.current_latency:.1f}s",
-                    fg=c
-                ))
-                
                 # Update queue depth color
                 if self.queue_depth <= 1:
-                    queue_color = '#00ff00'
+                    queue_color = '#00ff00'  # Green - keeping up
+                    queue_status = "OK"
                 elif self.queue_depth <= 3:
-                    queue_color = '#ffff00'
+                    queue_color = '#ffff00'  # Yellow - slight backlog
+                    queue_status = "Busy"
                 else:
-                    queue_color = '#ff0000'
+                    queue_color = '#ff0000'  # Red - falling behind
+                    queue_status = "Behind"
                 
-                self.root.after(0, lambda c=queue_color: self.queue_label.config(
-                    text=f"📋 Queue: {self.queue_depth}",
+                self.root.after(0, lambda c=queue_color, s=queue_status: self.queue_label.config(
+                    text=f"Queue: {self.queue_depth} ({s})",
                     fg=c
                 ))
                 
                 # Update segments counter
                 self.root.after(0, lambda: self.segments_label.config(
-                    text=f"📊 Displayed: {self.segments_displayed} | Skipped: {self.segments_skipped}"
+                    text=f"Displayed: {self.segments_displayed} | Skipped: {self.segments_skipped}"
                 ))
                 
                 # Update catchup indicator
                 if self.in_catchup_mode:
                     self.root.after(0, lambda: self.catchup_label.config(
-                        text="⚡ CATCH-UP MODE"
+                        text="CATCH-UP MODE"
                     ))
                 else:
                     self.root.after(0, lambda: self.catchup_label.config(text=""))
@@ -604,18 +639,28 @@ class TestHarnessDisplay:
         else:
             self.status_bar.config(text="🟢 ACTIVE - Ctrl+Shift+P to pause", bg='green')
     
-    def add_translation(self, lang1_text, lang2_text, segment_data: SegmentData, is_interim=False):
-        """Add translation to queue with tracking data"""
-        if lang1_text and lang2_text:
-            self.text_queue.put((lang1_text, lang2_text, segment_data, is_interim))
+    def add_translation(self, translations: list, segment_data: SegmentData, is_interim=False):
+        """Add translation to queue with tracking data
+        
+        Args:
+            translations: List of translated texts (one per language)
+            segment_data: SegmentData object for tracking
+            is_interim: Whether this is an interim (non-final) result
+        """
+        if translations and any(translations):
+            self.text_queue.put((translations, segment_data, is_interim))
             self.update_queue_depth(self.text_queue.qsize())
     
     def _process_queue(self):
         """Process translations with timing"""
         while self.is_running:
             try:
-                lang1, lang2, segment_data, is_interim = self.text_queue.get(timeout=0.1)
+                translations, segment_data, is_interim = self.text_queue.get(timeout=0.1)
                 self.update_queue_depth(self.text_queue.qsize())
+                
+                # Ensure translations list matches number of languages
+                while len(translations) < self.num_languages:
+                    translations.append("")
                 
                 # Check max latency limit
                 if self.config.get('max_latency') and segment_data:
@@ -624,7 +669,7 @@ class TestHarnessDisplay:
                         # Skip this segment - too old
                         segment_data.was_skipped = True
                         self.segments_skipped += 1
-                        print(f"⏭️  Skipping segment (latency {current_latency:.1f}s > {self.config['max_latency']}s)")
+                        print(f"Skipping segment (latency {current_latency:.1f}s > {self.config['max_latency']}s)")
                         continue
                 
                 # Update segment queue depth
@@ -632,9 +677,9 @@ class TestHarnessDisplay:
                     segment_data.queue_depth_at_display = self.text_queue.qsize()
                 
                 # Fade out current if exists
-                if self.current_lang1:
+                if self.current_texts[0]:
                     elapsed = (datetime.now() - self.display_start_time).total_seconds()
-                    required_time = self._calculate_display_time(self.current_lang1)
+                    required_time = self._calculate_display_time(self.current_texts[0])
                     
                     if elapsed < required_time:
                         time.sleep(required_time - elapsed)
@@ -642,7 +687,7 @@ class TestHarnessDisplay:
                     self._fade_out()
                 
                 # Display new text
-                self._fade_in(lang1, lang2, is_interim)
+                self._fade_in(translations, is_interim)
                 
                 # Record display timestamp
                 if segment_data:
@@ -659,8 +704,8 @@ class TestHarnessDisplay:
         fade_duration = times['fade_duration']
         
         if fade_duration <= 0:
-            self.root.after(0, lambda: self.lang1_text.config(text=""))
-            self.root.after(0, lambda: self.lang2_text.config(text=""))
+            for text_label in self.lang_texts:
+                self.root.after(0, lambda l=text_label: l.config(text=""))
             return
         
         fade_steps = 10
@@ -673,14 +718,13 @@ class TestHarnessDisplay:
             brightness = int(255 * alpha)
             color = f'#{brightness:02x}{brightness:02x}{brightness:02x}'
             
-            self.root.after(0, lambda c=color: self.lang1_text.config(fg=c))
-            self.root.after(0, lambda c=color: self.lang2_text.config(fg=c))
+            for text_label in self.lang_texts:
+                self.root.after(0, lambda l=text_label, c=color: l.config(fg=c))
             time.sleep(fade_delay)
     
-    def _fade_in(self, lang1_text, lang2_text, is_interim=False):
+    def _fade_in(self, translations, is_interim=False):
         """Fade in new text"""
-        self.current_lang1 = lang1_text
-        self.current_lang2 = lang2_text
+        self.current_texts = translations[:self.num_languages]
         self.current_is_interim = is_interim
         self.display_start_time = datetime.now()
         
@@ -696,8 +740,9 @@ class TestHarnessDisplay:
             base_color = '#ffffff'
         
         if fade_duration <= 0:
-            self.root.after(0, lambda: self.lang1_text.config(text=lang1_text, fg=base_color, font=text_font))
-            self.root.after(0, lambda: self.lang2_text.config(text=lang2_text, fg=base_color, font=text_font))
+            for i, text_label in enumerate(self.lang_texts):
+                text = translations[i] if i < len(translations) else ""
+                self.root.after(0, lambda l=text_label, t=text, c=base_color, f=text_font: l.config(text=t, fg=c, font=f))
             return
         
         fade_steps = 10
@@ -710,16 +755,16 @@ class TestHarnessDisplay:
             brightness = int(255 * alpha)
             color = f'#{brightness:02x}{brightness:02x}{brightness:02x}'
             
-            self.root.after(0, lambda t=lang1_text, c=color, f=text_font: self.lang1_text.config(text=t, fg=c, font=f))
-            self.root.after(0, lambda t=lang2_text, c=color, f=text_font: self.lang2_text.config(text=t, fg=c, font=f))
+            for i, text_label in enumerate(self.lang_texts):
+                text = translations[i] if i < len(translations) else ""
+                self.root.after(0, lambda l=text_label, t=text, c=color, f=text_font: l.config(text=t, fg=c, font=f))
             time.sleep(fade_delay)
     
     def clear_display(self):
         """Clear display"""
-        self.current_lang1 = ""
-        self.current_lang2 = ""
-        self.lang1_text.config(text="")
-        self.lang2_text.config(text="")
+        self.current_texts = [""] * self.num_languages
+        for text_label in self.lang_texts:
+            text_label.config(text="")
     
     def increase_font(self):
         self.font_size = min(self.font_size + 2, 48)
@@ -758,7 +803,7 @@ class AudioStreamer:
             info = self.audio.get_device_info_by_index(i)
             print(f"  [{i}] {info['name']}")
             if "USB" in info['name'] or "Focusrite" in info['name']:
-                print(f"✓ Found USB device: {info['name']}")
+                print(f"OK - Found USB device: {info['name']}")
                 return i
         print("⚠ USB device not found, using default input")
         return None
@@ -880,7 +925,7 @@ class AudioFileStreamer:
     
     def _load_audio_file(self):
         """Load audio file and convert to correct format"""
-        print(f"\n📂 Loading audio file: {self.file_path}")
+        print(f"\nLoading audio file: {self.file_path}")
         
         file_ext = os.path.splitext(self.file_path)[1].lower()
         
@@ -947,13 +992,13 @@ class AudioFileStreamer:
                     
                     os.remove(temp_converted)
                 else:
-                    print(f"   ⚠️  WAV format mismatch ({channels}ch, {frame_rate}Hz). May cause issues.")
+                    print(f"   WARNING:  WAV format mismatch ({channels}ch, {frame_rate}Hz). May cause issues.")
             
             self.audio_data = raw_data
         
         self.effective_duration = self.total_duration / self.playback_speed
         
-        print(f"   ✓ Loaded {self.total_duration:.1f} seconds ({self.total_duration/60:.1f} minutes) of audio")
+        print(f"   OK - Loaded {self.total_duration:.1f} seconds ({self.total_duration/60:.1f} minutes) of audio")
         print(f"   Playback speed: {self.playback_speed}x")
         print(f"   Effective test duration: {self.effective_duration:.1f} seconds ({self.effective_duration/60:.1f} minutes)")
     
@@ -1018,7 +1063,7 @@ class AudioFileStreamer:
         # Mark as finished
         self.is_finished = True
         self.is_recording = False
-        print("\n✓ Audio file playback complete")
+        print("\nOK - Audio file playback complete")
     
     def stop_stream(self):
         """Stop streaming"""
@@ -1108,9 +1153,9 @@ class TestHarnessSystem:
         self.total_active_time = 0
         
         # Initialize display
+        language_names = [lang[1] for lang in display_languages]
         self.display = TestHarnessDisplay(
-            display_languages[0][1],
-            display_languages[1][1],
+            language_names,
             self.test_config,
             font_size=28
         )
@@ -1141,7 +1186,7 @@ class TestHarnessSystem:
         self.audio_end_time = None
         self.final_display_time = None
         
-        print(f"\n🧪 TEST HARNESS INITIALIZED")
+        print(f"\nTEST - TEST HARNESS INITIALIZED")
         print(f"   Mode: {test_mode} - {self.test_config['name']}")
         print(f"   Description: {self.test_config['description']}")
         print(f"   Audio Source: {audio_source.upper()}")
@@ -1160,7 +1205,7 @@ class TestHarnessSystem:
         
         self.progress_label = tk.Label(
             progress_frame,
-            text="📁 Audio: 0:00 / 0:00 (0%)",
+            text="Audio: 0:00 / 0:00 (0%)",
             font=('Consolas', 10),
             fg='#888888',
             bg='#1a1a2e',
@@ -1187,7 +1232,7 @@ class TestHarnessSystem:
             percent = (current_seconds / total_seconds * 100) if total_seconds > 0 else 0
             
             self.display.root.after(0, lambda: self.progress_label.config(
-                text=f"📁 Audio: {current_str} / {total_str} ({percent:.0f}%)"
+                text=f"Audio: {current_str} / {total_str} ({percent:.0f}%)"
             ))
             
             # Update progress bar
@@ -1239,6 +1284,107 @@ class TestHarnessSystem:
         
         return translations
     
+    def split_text_into_chunks(self, text: str, max_words: int = 40, min_words: int = 15) -> List[str]:
+        """
+        Split text into chunks at sentence boundaries.
+        
+        Priority: 
+        1. Split at periods (.)
+        2. Split at commas (,) or semicolons (;)
+        3. Split at word boundary
+        
+        Args:
+            text: Text to split
+            max_words: Maximum words per chunk
+            min_words: Minimum words per chunk (avoid tiny fragments)
+            
+        Returns:
+            List of text chunks
+        """
+        words = text.split()
+        total_words = len(words)
+        
+        # If already under threshold, return as-is
+        if total_words <= max_words:
+            return [text]
+        
+        chunks = []
+        current_position = 0
+        
+        while current_position < total_words:
+            remaining_words = total_words - current_position
+            
+            # If remaining is small enough, take it all
+            if remaining_words <= max_words:
+                chunk = ' '.join(words[current_position:])
+                chunks.append(chunk)
+                break
+            
+            # Look for a good split point within the max_words window
+            window_end = min(current_position + max_words, total_words)
+            window_text = ' '.join(words[current_position:window_end])
+            
+            # Try to find split points (sentence endings preferred)
+            split_point = None
+            
+            # Priority 1: Look for period followed by space (sentence end)
+            for i in range(window_end - 1, current_position + min_words - 1, -1):
+                word = words[i]
+                if word.endswith('.') or word.endswith('?') or word.endswith('!'):
+                    split_point = i + 1
+                    break
+            
+            # Priority 2: Look for comma or semicolon
+            if split_point is None:
+                for i in range(window_end - 1, current_position + min_words - 1, -1):
+                    word = words[i]
+                    if word.endswith(',') or word.endswith(';') or word.endswith(':'):
+                        split_point = i + 1
+                        break
+            
+            # Priority 3: Just split at max_words
+            if split_point is None:
+                split_point = window_end
+            
+            # Create chunk
+            chunk = ' '.join(words[current_position:split_point])
+            chunks.append(chunk)
+            current_position = split_point
+        
+        return chunks
+    
+    def split_translations_into_chunks(self, original_text: str, translations: Dict[str, str], 
+                                       max_words: int = 40, min_words: int = 15) -> List[Dict[str, str]]:
+        """
+        Split translations into synchronized chunks.
+        Each translation is split proportionally to maintain alignment.
+        
+        Returns:
+            List of translation dicts, one per chunk
+        """
+        # Split original text to determine chunk count
+        original_chunks = self.split_text_into_chunks(original_text, max_words, min_words)
+        num_chunks = len(original_chunks)
+        
+        if num_chunks == 1:
+            return [translations]
+        
+        # Split each translation into the same number of chunks
+        chunked_translations = []
+        
+        for i in range(num_chunks):
+            chunk_dict = {}
+            for lang_name, trans_text in translations.items():
+                trans_chunks = self.split_text_into_chunks(trans_text, max_words, min_words)
+                # Get corresponding chunk (or last chunk if fewer)
+                if i < len(trans_chunks):
+                    chunk_dict[lang_name] = trans_chunks[i]
+                else:
+                    chunk_dict[lang_name] = ""
+            chunked_translations.append(chunk_dict)
+        
+        return chunked_translations
+    
     def _write_csv_row(self, segment: SegmentData):
         """Write segment data to CSV"""
         if self.csv_writer:
@@ -1254,6 +1400,11 @@ class TestHarnessSystem:
                 'queue_depth': segment.queue_depth_at_queue,
                 'is_interim': segment.is_interim,
                 'was_skipped': segment.was_skipped,
+                'original_segment_id': segment.original_segment_id or '',
+                'chunk_number': segment.chunk_number,
+                'total_chunks': segment.total_chunks,
+                'was_split': segment.was_split,
+                'original_word_count': segment.original_word_count or '',
                 'text_original': segment.text_original[:100]  # Truncate for CSV
             })
             self.csv_file.flush()
@@ -1272,7 +1423,10 @@ class TestHarnessSystem:
             'segment_id', 'timestamp_spoken', 'timestamp_displayed',
             'latency_total', 'latency_recognition', 'latency_translation',
             'latency_queue_wait', 'word_count', 'queue_depth',
-            'is_interim', 'was_skipped', 'text_original'
+            'is_interim', 'was_skipped', 
+            'original_segment_id', 'chunk_number', 'total_chunks', 
+            'was_split', 'original_word_count',
+            'text_original'
         ])
         self.csv_writer.writeheader()
         
@@ -1352,7 +1506,7 @@ class TestHarnessSystem:
                     # Record when audio ended
                     if self.audio_end_time is None:
                         self.audio_end_time = datetime.now()
-                        print(f"\n🏁 Audio file playback complete at {self.audio_end_time.strftime('%H:%M:%S')}")
+                        print(f"\nFINISHED - Audio file playback complete at {self.audio_end_time.strftime('%H:%M:%S')}")
                         print(f"   Waiting for display queue to drain...")
                     
                     # Wait for display queue to empty
@@ -1360,7 +1514,7 @@ class TestHarnessSystem:
                         # Record final display time
                         self.final_display_time = datetime.now()
                         queue_drain_time = (self.final_display_time - self.audio_end_time).total_seconds()
-                        print(f"\n✓ Queue drained at {self.final_display_time.strftime('%H:%M:%S')}")
+                        print(f"\nOK - Queue drained at {self.final_display_time.strftime('%H:%M:%S')}")
                         print(f"   QUEUE DRAIN TIME: {queue_drain_time:.1f} seconds")
                         print(f"   (This is your actual real-world latency)")
                         
@@ -1404,56 +1558,130 @@ class TestHarnessSystem:
                         
                         # Use interim results if configured
                         if not is_final and not self.test_config.get('use_interim_results'):
-                            print(f"💭 {transcript}", end='\r')
+                            print(f"(interim) {transcript}", end='\r')
                             continue
                         
-                        # Create segment data
+                        # Create base segment data
                         self.segment_counter += 1
+                        original_segment_id = self.segment_counter
                         timestamp_spoken = self.last_audio_timestamp or batch_start_time
                         timestamp_recognized = datetime.now()
+                        original_word_count = len(transcript.split())
                         
                         # Translate
                         translations = self.translate_to_multiple(transcript)
                         timestamp_translated = datetime.now()
                         
-                        segment = SegmentData(
-                            segment_id=self.segment_counter,
-                            text_original=transcript,
-                            text_translated=translations,
-                            word_count=len(transcript.split()),
-                            timestamp_spoken=timestamp_spoken,
-                            timestamp_recognized=timestamp_recognized,
-                            timestamp_translated=timestamp_translated,
-                            timestamp_queued=datetime.now(),
-                            is_interim=not is_final,
-                            queue_depth_at_queue=self.display.text_queue.qsize()
-                        )
+                        # Check if chunk splitting is enabled and needed
+                        chunk_split_enabled = self.test_config.get('chunk_split_enabled', False)
+                        chunk_threshold = self.test_config.get('chunk_split_threshold', 40)
+                        chunk_min = self.test_config.get('chunk_min_size', 15)
                         
-                        # Log to console
-                        status = "📝" if is_final else "💭"
-                        print(f"{status} [{datetime.now().strftime('%H:%M:%S')}] {transcript}")
+                        if chunk_split_enabled and original_word_count > chunk_threshold:
+                            # Split the text into chunks
+                            original_chunks = self.split_text_into_chunks(transcript, chunk_threshold, chunk_min)
+                            translation_chunks = self.split_translations_into_chunks(
+                                transcript, translations, chunk_threshold, chunk_min
+                            )
+                            total_chunks = len(original_chunks)
+                            
+                            # Log to console
+                            print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] Original: {original_word_count} words")
+                            print(f"   SPLIT -> {total_chunks} chunks ({', '.join([str(len(c.split())) for c in original_chunks])} words)")
+                            
+                            # Process each chunk
+                            for chunk_num, (orig_chunk, trans_chunk) in enumerate(zip(original_chunks, translation_chunks), 1):
+                                chunk_word_count = len(orig_chunk.split())
+                                
+                                # Create segment for this chunk
+                                if chunk_num > 1:
+                                    self.segment_counter += 1
+                                
+                                chunk_segment = SegmentData(
+                                    segment_id=self.segment_counter,
+                                    text_original=orig_chunk,
+                                    text_translated=trans_chunk,
+                                    word_count=chunk_word_count,
+                                    timestamp_spoken=timestamp_spoken,
+                                    timestamp_recognized=timestamp_recognized,
+                                    timestamp_translated=timestamp_translated,
+                                    timestamp_queued=datetime.now(),
+                                    is_interim=not is_final,
+                                    queue_depth_at_queue=self.display.text_queue.qsize(),
+                                    original_segment_id=original_segment_id,
+                                    chunk_number=chunk_num,
+                                    total_chunks=total_chunks,
+                                    was_split=True,
+                                    original_word_count=original_word_count
+                                )
+                                
+                                # Display chunk translations
+                                for lang_name, translation in trans_chunk.items():
+                                    print(f"   -> {lang_name} [{chunk_num}/{total_chunks}]: {translation[:80]}...")
+                                
+                                # Build display list
+                                display_translations = [
+                                    trans_chunk.get(lang[1], "") 
+                                    for lang in self.display_languages
+                                ]
+                                self.display.add_translation(display_translations, chunk_segment, not is_final)
+                                
+                                # Write to CSV
+                                self._write_csv_row(chunk_segment)
+                                
+                                # Add to session
+                                self.session.add_segment(chunk_segment)
+                            
+                            # Log to file
+                            if self.output_file:
+                                self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Segment {original_segment_id} SPLIT into {total_chunks} chunks\n")
+                                self.output_file.write(f"  Original: {original_word_count} words\n")
+                                self.output_file.write(f"  Chunks: {', '.join([str(len(c.split())) for c in original_chunks])} words\n")
+                                self.output_file.write(f"  Text: {transcript[:100]}...\n\n")
+                                self.output_file.flush()
                         
-                        for lang_name, translation in translations.items():
-                            print(f"   🌐 {lang_name}: {translation}")
-                        
-                        # Add to display queue
-                        display_lang1 = translations[self.display_languages[0][1]]
-                        display_lang2 = translations[self.display_languages[1][1]]
-                        self.display.add_translation(display_lang1, display_lang2, segment, not is_final)
-                        
-                        # Write to CSV
-                        self._write_csv_row(segment)
-                        
-                        # Add to session
-                        self.session.add_segment(segment)
-                        
-                        # Log to file
-                        if self.output_file:
-                            self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Segment {segment.segment_id}\n")
-                            self.output_file.write(f"  Latency: {segment.latency_recognition:.2f}s (recog) + {segment.latency_translation:.2f}s (trans)\n")
-                            self.output_file.write(f"  Queue depth: {segment.queue_depth_at_queue}\n")
-                            self.output_file.write(f"  Text: {transcript}\n\n")
-                            self.output_file.flush()
+                        else:
+                            # No splitting - process as single segment
+                            segment = SegmentData(
+                                segment_id=self.segment_counter,
+                                text_original=transcript,
+                                text_translated=translations,
+                                word_count=original_word_count,
+                                timestamp_spoken=timestamp_spoken,
+                                timestamp_recognized=timestamp_recognized,
+                                timestamp_translated=timestamp_translated,
+                                timestamp_queued=datetime.now(),
+                                is_interim=not is_final,
+                                queue_depth_at_queue=self.display.text_queue.qsize()
+                            )
+                            
+                            # Log to console
+                            status = "[Final]" if is_final else "[Interim]"
+                            print(f"{status} [{datetime.now().strftime('%H:%M:%S')}] {transcript}")
+                            
+                            for lang_name, translation in translations.items():
+                                print(f"   -> {lang_name}: {translation}")
+                            
+                            # Build list of translations in display order
+                            display_translations = [
+                                translations.get(lang[1], "") 
+                                for lang in self.display_languages
+                            ]
+                            self.display.add_translation(display_translations, segment, not is_final)
+                            
+                            # Write to CSV
+                            self._write_csv_row(segment)
+                            
+                            # Add to session
+                            self.session.add_segment(segment)
+                            
+                            # Log to file
+                            if self.output_file:
+                                self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Segment {segment.segment_id}\n")
+                                self.output_file.write(f"  Latency: {segment.latency_recognition:.2f}s (recog) + {segment.latency_translation:.2f}s (trans)\n")
+                                self.output_file.write(f"  Queue depth: {segment.queue_depth_at_queue}\n")
+                                self.output_file.write(f"  Text: {transcript}\n\n")
+                                self.output_file.flush()
                         
                         print("-" * 50)
             
@@ -1465,16 +1693,16 @@ class TestHarnessSystem:
                         if self.audio_streamer.is_finished:
                             continue
                     if not self.is_paused:
-                        print(f"\n⚠️  Stream timeout - restarting...")
+                        print(f"\nWARNING:  Stream timeout - restarting...")
                     time.sleep(1)
                     continue
                 else:
-                    print(f"\n❌ Error: {e}")
+                    print(f"\nERROR: Error: {e}")
                     break
     
     def stop(self):
         """Stop and generate summary"""
-        print("\n⏹️  Stopping test...")
+        print("\nSTOP -  Stopping test...")
         
         self.session.end_time = datetime.now()
         
@@ -1505,19 +1733,29 @@ class TestHarnessSystem:
         mode_name = self.test_config['name'].lower().replace(' ', '_')
         summary_filename = f"test_results/{mode_name}_{timestamp}_summary.txt"
         
-        # Calculate statistics
-        latencies = [s.latency_total for s in self.session.segments if s.latency_total and not s.was_skipped]
+        # Calculate queue wait times (translation received to displayed)
+        queue_wait_times = [s.latency_queue_wait for s in self.session.segments 
+                          if s.latency_queue_wait is not None and not s.was_skipped]
         
-        # Calculate latency trend (first half vs second half)
-        if len(latencies) > 4:
-            first_half = latencies[:len(latencies)//2]
-            second_half = latencies[len(latencies)//2:]
+        if queue_wait_times:
+            avg_queue_wait = sum(queue_wait_times) / len(queue_wait_times)
+            max_queue_wait = max(queue_wait_times)
+            min_queue_wait = min(queue_wait_times)
+        else:
+            avg_queue_wait = 0
+            max_queue_wait = 0
+            min_queue_wait = 0
+        
+        # Calculate queue wait trend (first half vs second half)
+        if len(queue_wait_times) > 4:
+            first_half = queue_wait_times[:len(queue_wait_times)//2]
+            second_half = queue_wait_times[len(queue_wait_times)//2:]
             first_avg = sum(first_half) / len(first_half)
             second_avg = sum(second_half) / len(second_half)
-            trend_per_segment = (second_avg - first_avg) / (len(latencies) // 2)
-            # Estimate trend per minute
+            
             if self.session.duration_seconds > 0:
                 segments_per_minute = len(self.session.segments) / (self.session.duration_seconds / 60)
+                trend_per_segment = (second_avg - first_avg) / (len(queue_wait_times) // 2)
                 trend_per_minute = trend_per_segment * segments_per_minute
             else:
                 trend_per_minute = 0
@@ -1526,7 +1764,7 @@ class TestHarnessSystem:
             first_avg = 0
             second_avg = 0
         
-        # Calculate queue drain time (most reliable latency measure)
+        # Calculate queue drain time (most reliable overall latency measure)
         if self.audio_end_time and self.final_display_time:
             queue_drain_time = (self.final_display_time - self.audio_end_time).total_seconds()
             queue_drain_str = f"{queue_drain_time:.1f} seconds"
@@ -1537,16 +1775,93 @@ class TestHarnessSystem:
         # Pre-calculate values for f-string
         duration_limit_str = f"{self.max_duration/60:.0f} minutes" if self.max_duration else "Full file"
         segments_per_min = len(self.session.segments)/(self.session.duration_seconds/60) if self.session.duration_seconds > 0 else 0
-        trend_direction = '(INCREASING - potential issue)' if trend_per_minute > 0.5 else '(STABLE)' if abs(trend_per_minute) < 0.5 else '(DECREASING)'
+        trend_direction = '(INCREASING - queue building up)' if trend_per_minute > 0.2 else '(STABLE)' if abs(trend_per_minute) < 0.2 else '(DECREASING)'
         trend_sign = '+' if trend_per_minute > 0 else ''
         
-        # Latency distribution counts
-        under_5 = len([l for l in latencies if l < 5])
-        lat_5_10 = len([l for l in latencies if 5 <= l < 10])
-        lat_10_15 = len([l for l in latencies if 10 <= l < 15])
-        lat_15_20 = len([l for l in latencies if 15 <= l < 20])
-        over_20 = len([l for l in latencies if l >= 20])
-        total_lat = len(latencies) if latencies else 1  # Avoid division by zero
+        # Queue wait distribution
+        total_waits = len(queue_wait_times) if queue_wait_times else 1
+        under_3 = len([w for w in queue_wait_times if w < 3])
+        wait_3_5 = len([w for w in queue_wait_times if 3 <= w < 5])
+        wait_5_8 = len([w for w in queue_wait_times if 5 <= w < 8])
+        wait_8_12 = len([w for w in queue_wait_times if 8 <= w < 12])
+        over_12 = len([w for w in queue_wait_times if w >= 12])
+        
+        # Chunk splitting analysis
+        chunk_split_enabled = self.test_config.get('chunk_split_enabled', False)
+        chunk_threshold = self.test_config.get('chunk_split_threshold', 40)
+        
+        # Get word counts
+        word_counts = [s.word_count for s in self.session.segments]
+        original_word_counts = [s.original_word_count for s in self.session.segments if s.original_word_count]
+        
+        # Count split segments
+        split_segments = [s for s in self.session.segments if s.was_split]
+        non_split_segments = [s for s in self.session.segments if not s.was_split]
+        
+        # Unique original segments that were split
+        original_segments_split = len(set(s.original_segment_id for s in split_segments if s.original_segment_id))
+        
+        # Chunks created from splits
+        chunks_from_splits = len(split_segments)
+        
+        # Word count distribution (after splitting)
+        wc_under_20 = len([w for w in word_counts if w < 20])
+        wc_20_40 = len([w for w in word_counts if 20 <= w < 40])
+        wc_41_60 = len([w for w in word_counts if 41 <= w <= 60])
+        wc_61_100 = len([w for w in word_counts if 61 <= w <= 100])
+        wc_over_100 = len([w for w in word_counts if w > 100])
+        total_wc = len(word_counts) if word_counts else 1
+        
+        # Build chunk splitting section if enabled
+        if chunk_split_enabled:
+            chunk_section = f"""
+{'='*70}
+CHUNK SPLITTING ANALYSIS
+{'='*70}
+Splitting Threshold: {chunk_threshold} words
+Minimum Chunk Size: {self.test_config.get('chunk_min_size', 15)} words
+
+SPLITTING STATISTICS
+--------------------
+Original segments from Google:    {original_segments_split + len(non_split_segments)}
+Segments that needed splitting:   {original_segments_split}
+Total chunks after splitting:     {len(self.session.segments)}
+New chunks created from splits:   {chunks_from_splits}
+
+WORD COUNT DISTRIBUTION (After Splitting)
+-----------------------------------------
+Under 20 words:  {wc_under_20:3d} ({100*wc_under_20/total_wc:.1f}%)
+20-40 words:     {wc_20_40:3d} ({100*wc_20_40/total_wc:.1f}%)
+41-60 words:     {wc_41_60:3d} ({100*wc_41_60/total_wc:.1f}%) {'<-- Over threshold' if wc_41_60 > 0 else ''}
+61-100 words:    {wc_61_100:3d} ({100*wc_61_100/total_wc:.1f}%) {'<-- Over threshold' if wc_61_100 > 0 else ''}
+Over 100 words:  {wc_over_100:3d} ({100*wc_over_100/total_wc:.1f}%) {'<-- Over threshold' if wc_over_100 > 0 else ''}
+
+"""
+        else:
+            # Show word count distribution for non-split modes
+            avg_wc = sum(word_counts) / len(word_counts) if word_counts else 0
+            max_wc = max(word_counts) if word_counts else 0
+            over_40 = len([w for w in word_counts if w > 40])
+            over_100 = len([w for w in word_counts if w > 100])
+            
+            chunk_section = f"""
+{'='*70}
+WORD COUNT ANALYSIS
+{'='*70}
+Average Words/Segment: {avg_wc:.1f}
+Maximum Words/Segment: {max_wc}
+Segments over 40 words:  {over_40} ({100*over_40/total_wc:.1f}%)
+Segments over 100 words: {over_100} ({100*over_100/total_wc:.1f}%)
+
+WORD COUNT DISTRIBUTION
+-----------------------
+Under 20 words:  {wc_under_20:3d} ({100*wc_under_20/total_wc:.1f}%)
+20-40 words:     {wc_20_40:3d} ({100*wc_20_40/total_wc:.1f}%)
+41-60 words:     {wc_41_60:3d} ({100*wc_41_60/total_wc:.1f}%)
+61-100 words:    {wc_61_100:3d} ({100*wc_61_100/total_wc:.1f}%)
+Over 100 words:  {wc_over_100:3d} ({100*wc_over_100/total_wc:.1f}%)
+
+"""
         
         summary = f"""
 {'='*70}
@@ -1562,50 +1877,64 @@ Duration Limit: {duration_limit_str}
 Reading Speed: {self.test_config['reading_speed']} wpm
 Min Display Time: {self.test_config['min_display_time']}s
 Fade Duration: {self.test_config['fade_duration']}s
-Use Interim Results: {self.test_config.get('use_interim_results', False)}
-Max Latency Limit: {self.test_config.get('max_latency', 'None')}
-Catchup Enabled: {self.test_config.get('catchup_enabled', False)}
+Chunk Splitting: {'Enabled (threshold: ' + str(chunk_threshold) + ' words)' if chunk_split_enabled else 'Disabled'}
 
 TIMING STATISTICS
 -----------------
 Test Duration: {self.session.duration_seconds/60:.1f} minutes
 Active Time: {self.total_active_time/60:.1f} minutes
-Pause Time: {self.total_pause_time/60:.1f} minutes
-
-{'='*70}
-QUEUE DRAIN TIME (Most Reliable Latency Measure)
-{'='*70}
-Time from audio end to last translation displayed: {queue_drain_str}
-
-This is the ACTUAL real-world latency your congregation experiences.
-{'='*70}
 
 SEGMENT STATISTICS
 ------------------
-Total Segments: {len(self.session.segments)}
-Displayed: {self.display.segments_displayed}
-Skipped: {self.display.segments_skipped}
-Segments/Minute: {segments_per_min:.1f}
+Segments Processed: {len(self.session.segments)}
+Segments Displayed: {self.display.segments_displayed}
+Segments Skipped:   {self.display.segments_skipped}
+Segments/Minute:    {segments_per_min:.1f}
 
-CALCULATED LATENCY STATISTICS (may have measurement errors)
------------------------------------------------------------
-Average Latency: {self.session.avg_latency:.2f} seconds
-Maximum Latency: {self.session.max_latency:.2f} seconds
-Minimum Latency: {self.session.min_latency:.2f} seconds
+{'='*70}
+QUEUE DRAIN TIME (Overall System Latency)
+{'='*70}
+Time from audio end to last translation displayed: {queue_drain_str}
 
-LATENCY TREND
--------------
-First Half Average: {first_avg:.2f} seconds
+This represents the TOTAL end-to-end delay your congregation experiences
+from when words are spoken to when translation appears on screen.
+{'='*70}
+
+QUEUE WAIT TIME (Translation Ready -> Displayed)
+{'='*70}
+This measures how long each translation waits in the display queue
+after being translated, before it appears on screen.
+
+Average Wait:  {avg_queue_wait:.2f} seconds
+Maximum Wait:  {max_queue_wait:.2f} seconds
+Minimum Wait:  {min_queue_wait:.2f} seconds
+
+QUEUE WAIT TREND
+----------------
+First Half Average:  {first_avg:.2f} seconds
 Second Half Average: {second_avg:.2f} seconds
 Trend: {trend_sign}{trend_per_minute:.2f} sec/minute {trend_direction}
 
-LATENCY DISTRIBUTION
---------------------
-Under 5 seconds:  {under_5:3d} ({100*under_5/total_lat:.1f}%)
-5-10 seconds:     {lat_5_10:3d} ({100*lat_5_10/total_lat:.1f}%)
-10-15 seconds:    {lat_10_15:3d} ({100*lat_10_15/total_lat:.1f}%)
-15-20 seconds:    {lat_15_20:3d} ({100*lat_15_20/total_lat:.1f}%)
-Over 20 seconds:  {over_20:3d} ({100*over_20/total_lat:.1f}%)
+QUEUE WAIT DISTRIBUTION
+-----------------------
+Under 3 seconds:  {under_3:3d} ({100*under_3/total_waits:.1f}%) - Excellent
+3-5 seconds:      {wait_3_5:3d} ({100*wait_3_5/total_waits:.1f}%) - Good
+5-8 seconds:      {wait_5_8:3d} ({100*wait_5_8/total_waits:.1f}%) - Acceptable
+8-12 seconds:     {wait_8_12:3d} ({100*wait_8_12/total_waits:.1f}%) - Slow
+Over 12 seconds:  {over_12:3d} ({100*over_12/total_waits:.1f}%) - Too slow
+{chunk_section}
+{'='*70}
+ANALYSIS
+{'='*70}
+Queue Drain Time ({queue_drain_str}) includes:
+  - Google Speech Recognition delay (~3-5 sec)
+  - Translation API delay (~1 sec)  
+  - Display queue wait ({avg_queue_wait:.1f} sec average)
+  - Final segment display time
+
+Average Queue Wait ({avg_queue_wait:.2f}s) vs Drain Time ({queue_drain_str}):
+  If these are close, translations are keeping up with speech.
+  If drain time >> queue wait, there may be recognition delays.
 
 {'='*70}
 """
@@ -1637,11 +1966,13 @@ def select_test_mode():
         print(f"     {config['description']}")
         print(f"     Settings: {config['reading_speed']} wpm, {config['min_display_time']}s min, {config['fade_duration']}s fade")
         if config.get('use_interim_results'):
-            print(f"     ⚡ Shows interim results (text may change)")
+            print(f"     Shows interim results (text may change)")
         if config.get('max_latency'):
-            print(f"     ⏱️ Max latency: {config['max_latency']}s")
+            print(f"     Max latency: {config['max_latency']}s")
         if config.get('catchup_enabled'):
-            print(f"     🏃 Catchup mode enabled (threshold: {config.get('catchup_threshold')} items)")
+            print(f"     Catchup mode enabled (threshold: {config.get('catchup_threshold')} items)")
+        if config.get('chunk_split_enabled'):
+            print(f"     Chunk splitting: max {config.get('chunk_split_threshold')} words per chunk")
     
     print("\n" + "-"*70)
     print("  L. View last test results")
@@ -1650,7 +1981,7 @@ def select_test_mode():
     print("-"*70)
     
     while True:
-        choice = input("\nEnter choice (0-4, L, C, Q): ").strip().upper()
+        choice = input("\nEnter choice (0-7, L, C, Q): ").strip().upper()
         
         if choice == 'Q':
             print("Exiting...")
@@ -1661,10 +1992,10 @@ def select_test_mode():
         elif choice == 'C':
             compare_all_results()
             return select_test_mode()  # Return to menu
-        elif choice in ['0', '1', '2', '3', '4']:
+        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7']:
             return int(choice)
         else:
-            print("❌ Invalid choice. Try again.")
+            print("Invalid choice. Try again.")
 
 
 def select_audio_source():
@@ -1673,8 +2004,8 @@ def select_audio_source():
     print("    AUDIO SOURCE SELECTION")
     print("="*70)
     
-    print("\n  1. 🎤 Live Microphone (USB/Focusrite)")
-    print("  2. 📁 Audio File (MP3/WAV) - Recommended for testing")
+    print("\n  1. Live Microphone (USB/Focusrite)")
+    print("  2. Audio File (MP3/WAV) - Recommended for testing")
     
     while True:
         choice = input("\nSelect audio source (1-2): ").strip()
@@ -1716,16 +2047,16 @@ def select_audio_source():
                             file_path = input("Enter full path to audio file: ").strip()
                             if os.path.exists(file_path):
                                 break
-                            print("❌ File not found.")
+                            print("ERROR: File not found.")
                         else:
                             try:
                                 idx = int(file_choice) - 1
                                 if 0 <= idx < len(files):
                                     file_path = os.path.join(DEFAULT_AUDIO_FOLDER, files[idx])
                                     break
-                                print("❌ Invalid number.")
+                                print("ERROR: Invalid number.")
                             except ValueError:
-                                print("❌ Invalid choice.")
+                                print("ERROR: Invalid choice.")
                 else:
                     print("No audio files found in default folder.")
                     file_path = input("Enter full path to audio file: ").strip()
@@ -1734,7 +2065,7 @@ def select_audio_source():
                 file_path = input("Enter full path to audio file: ").strip()
             
             if not os.path.exists(file_path):
-                print("❌ File not found. Using microphone instead.")
+                print("ERROR: File not found. Using microphone instead.")
                 return "microphone", None, 1.0, None
             
             # Duration limit selection
@@ -1753,30 +2084,30 @@ def select_audio_source():
                 
                 if duration_choice == "" or duration_choice == "2":
                     max_duration = 15 * 60  # 15 minutes in seconds
-                    print(f"✓ Will use first 15 minutes of audio")
+                    print(f"OK - Will use first 15 minutes of audio")
                     break
                 elif duration_choice == "1":
                     max_duration = None  # No limit
-                    print(f"✓ Will use full audio file")
+                    print(f"OK - Will use full audio file")
                     break
                 elif duration_choice == "3":
                     max_duration = 30 * 60
-                    print(f"✓ Will use first 30 minutes of audio")
+                    print(f"OK - Will use first 30 minutes of audio")
                     break
                 elif duration_choice == "4":
                     max_duration = 45 * 60
-                    print(f"✓ Will use first 45 minutes of audio")
+                    print(f"OK - Will use first 45 minutes of audio")
                     break
                 elif duration_choice == "5":
                     custom = input("Enter duration in minutes: ").strip()
                     try:
                         max_duration = float(custom) * 60
-                        print(f"✓ Will use first {float(custom):.1f} minutes of audio")
+                        print(f"OK - Will use first {float(custom):.1f} minutes of audio")
                         break
                     except ValueError:
-                        print("❌ Invalid number.")
+                        print("ERROR: Invalid number.")
                 else:
-                    print("❌ Invalid choice.")
+                    print("ERROR: Invalid choice.")
             
             # Playback speed selection
             print("\n" + "-"*70)
@@ -1797,7 +2128,7 @@ def select_audio_source():
                 elif speed_choice == "3":
                     playback_speed = 2.0
                     break
-                print("❌ Invalid choice.")
+                print("ERROR: Invalid choice.")
             
             # Calculate effective test time
             if max_duration:
@@ -1805,7 +2136,7 @@ def select_audio_source():
             else:
                 effective_minutes = "full file"
             
-            print(f"\n✓ Audio source: FILE")
+            print(f"\nOK - Audio source: FILE")
             print(f"  File: {os.path.basename(file_path)}")
             print(f"  Duration limit: {max_duration/60:.0f} minutes" if max_duration else "  Duration limit: None (full file)")
             print(f"  Speed: {playback_speed}x")
@@ -1814,7 +2145,7 @@ def select_audio_source():
             
             return "file", file_path, playback_speed, max_duration
         
-        print("❌ Invalid choice. Enter 1 or 2.")
+        print("ERROR: Invalid choice. Enter 1 or 2.")
 
 
 def browse_for_file():
@@ -1835,7 +2166,7 @@ def browse_for_file():
         root.destroy()
         return file_path if file_path else None
     except Exception as e:
-        print(f"⚠️  File browser error: {e}")
+        print(f"WARNING:  File browser error: {e}")
         return None
 
 
@@ -1843,21 +2174,21 @@ def view_last_results():
     """View the most recent test results"""
     results_dir = "test_results"
     if not os.path.exists(results_dir):
-        print("\n⚠️  No test results found.")
+        print("\nNo test results found.")
         input("Press Enter to continue...")
         return
     
     # Find most recent summary file
     summary_files = [f for f in os.listdir(results_dir) if f.endswith('_summary.txt')]
     if not summary_files:
-        print("\n⚠️  No summary files found.")
+        print("\nNo summary files found.")
         input("Press Enter to continue...")
         return
     
     summary_files.sort(reverse=True)
     latest = os.path.join(results_dir, summary_files[0])
     
-    print(f"\n📊 Latest results: {summary_files[0]}\n")
+    print(f"\nLatest results: {summary_files[0]}\n")
     with open(latest, 'r', encoding='utf-8') as f:
         print(f.read())
     
@@ -1868,14 +2199,14 @@ def compare_all_results():
     """Compare results from all test modes"""
     results_dir = "test_results"
     if not os.path.exists(results_dir):
-        print("\n⚠️  No test results found.")
+        print("\nNo test results found.")
         input("Press Enter to continue...")
         return
     
     # Find all summary files
     summary_files = [f for f in os.listdir(results_dir) if f.endswith('_summary.txt')]
     if not summary_files:
-        print("\n⚠️  No summary files found.")
+        print("\nNo summary files found.")
         input("Press Enter to continue...")
         return
     
@@ -1895,8 +2226,8 @@ def compare_all_results():
             
             # Try to extract values
             try:
-                # Try to get queue drain time (new metric)
-                if 'QUEUE DRAIN TIME' in content and 'seconds' in content.split('QUEUE DRAIN TIME')[1][:200]:
+                # Queue drain time
+                if 'audio end to last translation displayed:' in content:
                     drain_section = content.split('audio end to last translation displayed:')[1]
                     drain_str = drain_section.split('seconds')[0].strip()
                     try:
@@ -1906,39 +2237,68 @@ def compare_all_results():
                 else:
                     queue_drain = None
                 
-                avg_lat = float(content.split('Average Latency:')[1].split('seconds')[0].strip())
-                max_lat = float(content.split('Maximum Latency:')[1].split('seconds')[0].strip())
-                segments = int(content.split('Total Segments:')[1].split('\n')[0].strip())
-                over_20 = content.split('Over 20 seconds:')[1].split('(')[0].strip()
+                # Queue wait time (new format)
+                if 'Average Wait:' in content:
+                    avg_wait_str = content.split('Average Wait:')[1].split('seconds')[0].strip()
+                    try:
+                        avg_queue_wait = float(avg_wait_str)
+                    except:
+                        avg_queue_wait = None
+                else:
+                    avg_queue_wait = None
+                
+                # Segments Processed
+                if 'Segments Processed:' in content:
+                    segments = int(content.split('Segments Processed:')[1].split('\n')[0].strip())
+                elif 'Total Segments:' in content:
+                    segments = int(content.split('Total Segments:')[1].split('\n')[0].strip())
+                else:
+                    segments = 0
+                
+                # Segments Skipped
+                if 'Segments Skipped:' in content:
+                    skipped = int(content.split('Segments Skipped:')[1].split('\n')[0].strip())
+                else:
+                    skipped = 0
+                
+                # Duration
+                if 'Test Duration:' in content:
+                    duration_str = content.split('Test Duration:')[1].split('minutes')[0].strip()
+                    try:
+                        duration = float(duration_str)
+                    except:
+                        duration = 0
+                else:
+                    duration = 0
                 
                 results.append({
                     'file': sf,
                     'mode': mode_name,
                     'queue_drain': queue_drain,
-                    'avg_latency': avg_lat,
-                    'max_latency': max_lat,
+                    'avg_queue_wait': avg_queue_wait,
                     'segments': segments,
-                    'over_20': over_20
+                    'skipped': skipped,
+                    'duration': duration
                 })
             except Exception as e:
                 pass
     
     if results:
-        # Check if any results have queue drain time
-        has_drain_time = any(r['queue_drain'] is not None for r in results)
+        print("\n*** QUEUE DRAIN TIME = Total end-to-end latency ***")
+        print("*** SKIPPED = Translations lost (should be 0) ***\n")
         
-        if has_drain_time:
-            print("\n*** QUEUE DRAIN TIME is the most reliable latency measure ***\n")
-            print(f"{'Mode':<20} {'Drain Time':>12} {'Avg Lat':>10} {'Max Lat':>10} {'Segments':>10}")
-            print("-" * 65)
-            for r in results:
-                drain_str = f"{r['queue_drain']:.1f}s" if r['queue_drain'] else "N/A"
-                print(f"{r['mode']:<20} {drain_str:>12} {r['avg_latency']:>10.2f}s {r['max_latency']:>10.2f}s {r['segments']:>10}")
-        else:
-            print(f"\n{'Mode':<20} {'Avg Lat':>10} {'Max Lat':>10} {'Segments':>10} {'Over 20s':>10}")
-            print("-" * 60)
-            for r in results:
-                print(f"{r['mode']:<20} {r['avg_latency']:>10.2f}s {r['max_latency']:>10.2f}s {r['segments']:>10} {r['over_20']:>10}")
+        print(f"{'Mode':<18} {'Duration':>8} {'Drain':>8} {'Wait':>8} {'Segments':>10} {'Skipped':>8}")
+        print("-" * 70)
+        for r in sorted(results, key=lambda x: x['queue_drain'] if x['queue_drain'] else 999):
+            drain_str = f"{r['queue_drain']:.1f}s" if r['queue_drain'] else "N/A"
+            wait_str = f"{r['avg_queue_wait']:.1f}s" if r['avg_queue_wait'] else "N/A"
+            dur_str = f"{r['duration']:.0f}m" if r['duration'] else "N/A"
+            skipped_str = str(r['skipped']) if r['skipped'] == 0 else f"{r['skipped']} !!!"
+            print(f"{r['mode']:<18} {dur_str:>8} {drain_str:>8} {wait_str:>8} {r['segments']:>10} {skipped_str:>8}")
+        
+        print("\n" + "-"*70)
+        print("Lower Drain Time = Better overall latency")
+        print("Skipped should always be 0 (no lost translations)")
     else:
         print("\nCould not parse summary files.")
     
@@ -1966,30 +2326,50 @@ def configure_languages():
         choice = input("\nEnter number (1-12): ").strip()
         if choice in INPUT_LANGUAGES:
             source_language = INPUT_LANGUAGES[choice]
-            print(f"✓ Input: {source_language[1]}")
+            print(f"Selected: {source_language[1]}")
             break
-        print("❌ Invalid choice.")
+        print("Invalid choice.")
     
-    # Output languages (simplified: pick 2 for display)
-    print("\nSTEP 2: OUTPUT LANGUAGES (select 2 for display)")
+    # How many output languages?
+    print("\nSTEP 2: NUMBER OF OUTPUT LANGUAGES")
+    print("-" * 70)
+    print("How many languages do you want to translate to?")
+    print("  1 - Single language (full screen)")
+    print("  2 - Two languages (split screen)")
+    print("  3 - Three languages")
+    print("  4 - Four languages")
+    
+    while True:
+        num_choice = input("\nEnter number of languages (1-4): ").strip()
+        if num_choice in ['1', '2', '3', '4']:
+            num_languages = int(num_choice)
+            break
+        print("Invalid choice. Enter 1, 2, 3, or 4.")
+    
+    # Output languages
+    print(f"\nSTEP 3: SELECT {num_languages} OUTPUT LANGUAGE(S)")
     print("-" * 70)
     for num, (code, name) in OUTPUT_LANGUAGES.items():
         print(f"{num:>2}. {name}")
     
     target_languages = []
-    for i in range(2):
+    for i in range(num_languages):
         while True:
             choice = input(f"\nSelect output language #{i+1} (1-16): ").strip()
             if choice in OUTPUT_LANGUAGES:
                 lang = OUTPUT_LANGUAGES[choice]
                 if lang not in target_languages:
                     target_languages.append(lang)
-                    print(f"✓ Language {i+1}: {lang[1]}")
+                    print(f"Language {i+1}: {lang[1]}")
                     break
                 else:
-                    print("❌ Already selected.")
+                    print("Already selected. Choose a different language.")
             else:
-                print("❌ Invalid choice.")
+                print("Invalid choice.")
+    
+    print(f"\nConfiguration complete:")
+    print(f"  Input: {source_language[1]}")
+    print(f"  Output: {', '.join([l[1] for l in target_languages])}")
     
     return source_language, target_languages, target_languages
 
@@ -2000,13 +2380,13 @@ def configure_languages():
 
 if __name__ == "__main__":
     print("="*70)
-    print("🧪 SERMON TRANSLATION SYSTEM - TEST HARNESS")
+    print("TEST - SERMON TRANSLATION SYSTEM - TEST HARNESS")
     print("   Instrumented version for latency testing and comparison")
     print("="*70)
     
     # Check for ffmpeg
     if not FFMPEG_AVAILABLE:
-        print("\n⚠️  WARNING: ffmpeg not found - MP3 support disabled")
+        print("\nWARNING:  WARNING: ffmpeg not found - MP3 support disabled")
         print("   Install with: winget install ffmpeg")
         print("   Or download from: https://ffmpeg.org/download.html")
         print("   (WAV files will still work)")
