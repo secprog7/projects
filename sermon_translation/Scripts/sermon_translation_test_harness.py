@@ -27,6 +27,7 @@ import threading
 from typing import Generator, List, Dict, Optional
 from google.cloud import speech
 from google.cloud import translate_v2 as translate
+from google.protobuf import duration_pb2
 from google.oauth2 import service_account
 from datetime import datetime, timedelta
 import os
@@ -186,7 +187,7 @@ TEST_MODES = {
     },
     7: {
         "name": "Chunk Splitting",
-        "description": "Splits long segments (40+ words) for consistent display timing",
+        "description": "Splits long segments (30+ words) for consistent display timing",
         "reading_speed": 220,  # Comfortable reading speed
         "min_display_time": 2.5,  # Optimized
         "fade_duration": 0.3,  # Quick fades
@@ -196,8 +197,123 @@ TEST_MODES = {
         "catchup_enabled": False,
         "catchup_threshold": None,
         "chunk_split_enabled": True,
-        "chunk_split_threshold": 40,  # Max words per chunk
-        "chunk_min_size": 15,  # Minimum words in a chunk
+        "chunk_split_threshold": 30,  # Max words per chunk
+        "chunk_min_size": 10,  # Minimum words in a chunk
+    },
+    8: {
+        "name": "Fast Recognition + Splitting",
+        "description": "Forces faster Google recognition + chunk splitting (best for Portuguese)",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,  # Don't display interim to congregation
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,  # Max words per chunk (reduced from 40)
+        "chunk_min_size": 10,  # Minimum words in a chunk (reduced from 15)
+        # Fast recognition settings
+        "force_faster_recognition": True,
+        "use_short_model": True,  # Use "latest_short" instead of "latest_long"
+        "api_interim_results": True,  # Enable interim at API level (forces faster processing)
+    },
+    9: {
+        "name": "High Accuracy + Splitting",
+        "description": "Maximum accuracy (latest_long) + faster returns + chunk splitting",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,  # Don't display interim to congregation
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,  # Max words per chunk
+        "chunk_min_size": 10,  # Minimum words in a chunk
+        # High accuracy settings
+        "force_faster_recognition": True,
+        "use_short_model": False,  # Use "latest_long" for better accuracy
+        "api_interim_results": True,  # Enable interim at API level (faster returns)
+    },
+    10: {
+        "name": "Minimal Latency (Portuguese)",
+        "description": "Stripped-down settings for fastest recognition - best for Portuguese",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,  # Don't display interim to congregation
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,  # Max words per chunk
+        "chunk_min_size": 10,  # Minimum words in a chunk
+        # Minimal latency settings - strip everything that causes delay
+        "force_faster_recognition": True,
+        "use_short_model": False,  # Use default model
+        "use_default_model": True,  # Flag to use "default" instead of latest_long
+        "api_interim_results": True,  # Enable interim at API level
+        "disable_enhanced": True,  # Don't use enhanced model
+        "disable_punctuation": True,  # Don't wait for punctuation
+        "disable_speech_context": True,  # No sermon hints (may cause buffering)
+    },
+    11: {
+        "name": "Voice Activity Timeout",
+        "description": "Mode 10 settings (voice_activity_timeout disabled - caused stream issues)",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,  # Don't display interim to congregation
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,  # Max words per chunk
+        "chunk_min_size": 10,  # Minimum words in a chunk
+        # Minimal latency settings (same as Mode 10)
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,
+        "disable_enhanced": True,
+        "disable_punctuation": True,
+        "disable_speech_context": True,
+        # Voice activity timeout - DISABLED (causes stream restarts)
+        "use_voice_activity_timeout": False,
+        "speech_start_timeout_sec": 10,
+        "speech_end_timeout_sec": 3,
+    },
+    12: {
+        "name": "Early Interim Display",
+        "description": "Display interim results after 15 words - don't wait for FINAL",
+        "reading_speed": 220,  # Comfortable reading speed
+        "min_display_time": 2.5,  # Optimized
+        "fade_duration": 0.3,  # Quick fades
+        "buffer_time": 0.5,  # Optimized
+        "use_interim_results": False,  # Standard interim display OFF
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,  # Max words per chunk
+        "chunk_min_size": 10,  # Minimum words in a chunk
+        # Minimal latency settings (same as Mode 10)
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,  # Must be True to receive interim results
+        "disable_enhanced": True,
+        "disable_punctuation": True,
+        "disable_speech_context": False,  # ENABLED - helps with theological terms (Option C)
+        "use_voice_activity_timeout": False,
+        # Early interim display settings - KEY FEATURE
+        "early_interim_display": True,
+        "early_interim_word_threshold": 15,  # Display interim after this many words (reduced from 20)
     },
 }
 
@@ -1089,9 +1205,139 @@ class TestHarnessSystem:
     """Main test harness system with full instrumentation"""
     
     SERMON_CONTEXT_HINTS = [
+        # =================================================================
+        # PORTUGUESE THEOLOGICAL TERMS (~480 hints)
+        # Google Speech API limit: 500 phrases per SpeechContext
+        # =================================================================
+        
+        # --- Core Theological Terms ---
+        "graça", "salvação", "redenção", "Escrituras", "Evangelho",
+        "pecado", "arrependimento", "fé", "esperança", "amor",
+        "justificação", "santificação", "glorificação", "regeneração",
+        "eleição", "predestinação", "soberania", "providência",
+        "onipotência", "onisciência", "onipresença", "imutabilidade",
+        "santidade", "justiça", "misericórdia", "bondade", "fidelidade",
+        "verdade", "sabedoria", "eternidade",
+        
+        # --- Biblical Books (Portuguese) ---
+        "Gênesis", "Êxodo", "Levítico", "Números", "Deuteronômio",
+        "Josué", "Juízes", "Rute", "Samuel", "Reis", "Crônicas",
+        "Esdras", "Neemias", "Ester", "Jó", "Salmos", "Provérbios",
+        "Eclesiastes", "Cantares", "Isaías", "Jeremias", "Lamentações",
+        "Ezequiel", "Daniel", "Oséias", "Joel", "Amós", "Obadias",
+        "Jonas", "Miquéias", "Naum", "Habacuque", "Sofonias", "Ageu",
+        "Zacarias", "Malaquias", "Mateus", "Marcos", "Lucas", "João",
+        "Atos", "Romanos", "Coríntios", "Gálatas", "Efésios",
+        "Filipenses", "Colossenses", "Tessalonicenses", "Timóteo",
+        "Tito", "Filemom", "Hebreus", "Tiago", "Pedro", "Judas",
+        "Apocalipse",
+        
+        # --- God, Christ, Holy Spirit ---
+        "Deus", "Senhor", "Jesus", "Cristo", "Espírito Santo",
+        "Trindade", "Pai", "Filho", "Messias", "Salvador",
+        "Redentor", "Cordeiro de Deus", "Filho de Deus", "Filho do Homem",
+        "encarnação", "ressurreição", "ascensão", "segunda vinda",
+        "divindade", "humanidade de Cristo", "natureza divina",
+        "nascimento virginal", "Criador", "Sustentador", "Juiz",
+        "Rei", "Profeta", "Sacerdote", "Mediador", "Intercessor",
+        "Advogado", "Consolador", "Paracleto", "Jeová", "Emanuel",
+        "Alfa e Ômega", "Verbo", "Logos", "Palavra",
+        
+        # --- Church and Worship ---
+        "igreja", "congregação", "irmãos", "irmãs", "comunhão",
+        "adoração", "louvor", "oração", "pregação", "sermão",
+        "batismo", "ceia do Senhor", "santa ceia", "ordenanças",
+        "discipulado", "evangelismo", "missões", "ministério",
+        "pastor", "presbítero", "diácono", "ancião", "bispo",
+        "apóstolo", "profeta", "evangelista", "mestre",
+        "rebanho", "ovelhas", "corpo de Cristo", "noiva de Cristo",
+        "templo", "santuário", "tabernáculo", "culto",
+        "oferta", "dízimo", "mordomia",
+        
+        # --- Sermon Phrases ---
+        "abram suas Bíblias", "vamos ler", "o texto diz",
+        "o apóstolo Paulo", "o profeta", "nosso Senhor",
+        "a Palavra de Deus", "as Escrituras dizem", "está escrito",
+        "neste versículo", "neste texto", "nesta passagem",
+        "o contexto", "o significado", "a aplicação",
+        "vejamos", "observem", "notem", "considerem",
+        "em primeiro lugar", "em segundo lugar", "finalmente",
+        "o que isso significa", "vamos orar", "amém", "aleluia",
+        "assim diz o Senhor", "ouçam", "prestem atenção",
+        "versículo", "capítulo", "passagem", "contexto histórico",
+        
+        # --- Reformed Theology ---
+        "depravação total", "eleição incondicional", "expiação limitada",
+        "graça irresistível", "perseverança dos santos",
+        "sola fide", "sola gratia", "sola scriptura",
+        "solus Christus", "soli Deo gloria", "cinco solas",
+        "aliança", "pacto", "promessa", "cumprimento",
+        "aliança da graça", "teologia reformada", "calvinismo",
+        "livre arbítrio", "servo arbítrio", "doutrinas da graça",
+        
+        # --- Sin and Salvation ---
+        "pecado original", "queda", "Adão", "Eva", "tentação",
+        "pecador", "perdão", "compaixão", "condenação", "julgamento",
+        "juízo final", "inferno", "céu", "paraíso", "lago de fogo",
+        "vida eterna", "morte eterna", "cruz", "sangue", "sacrifício",
+        "propiciação", "expiação", "reconciliação", "resgate",
+        "imputação", "substituição", "conversão", "novo nascimento",
+        "nascer de novo", "confissão",
+        
+        # --- Christian Life ---
+        "obediência", "submissão", "humildade", "serviço", "testemunho",
+        "fruto do Espírito", "dons espirituais", "jejum", "meditação",
+        "alegria", "paz", "paciência", "benignidade", "mansidão",
+        "domínio próprio", "provação", "sofrimento", "perseguição",
+        "batalha espiritual", "armadura de Deus", "espada do Espírito",
+        "escudo da fé", "crescimento", "maturidade",
+        
+        # --- Historical References ---
+        "Irineu", "Agostinho", "Calvino", "Lutero", "Zwínglio",
+        "Spurgeon", "Edwards", "Reformadores", "Reforma Protestante",
+        "pais da igreja", "pais apostólicos", "Nicéia", "Calcedônia",
+        "credo", "confissão", "catecismo", "Westminster",
+        "heresia", "ortodoxia", "apostasia", "gnosticismo",
+        "arianismo", "pelagianismo", "cristologia", "soteriologia",
+        "escatologia", "pneumatologia", "eclesiologia",
+        "exegese", "hermenêutica", "homilética", "apologética",
+        
+        # --- Bible Locations ---
+        "Jerusalém", "Israel", "Judeia", "Galileia", "Samaria",
+        "Roma", "Éfeso", "Corinto", "Colossos", "Filipos",
+        "Tessalônica", "Antioquia", "Damasco", "Atenas",
+        "Ásia Menor", "Egito", "Babilônia", "Pérsia", "Grécia",
+        "Jordão", "Monte Sinai", "Monte das Oliveiras", "Gólgota",
+        "Calvário", "Getsêmani", "Terra Prometida", "Canaã",
+        "Vale do Rio Lico", "Hierápolis", "Laodiceia",
+        
+        # --- Bible People ---
+        "Abraão", "Isaque", "Jacó", "José", "Moisés", "Arão",
+        "Josué", "Calebe", "Gideão", "Sansão", "Samuel", "Davi",
+        "Salomão", "Elias", "Eliseu", "Isaías", "Jeremias",
+        "Ezequiel", "Daniel", "Jonas", "Paulo", "Pedro", "João",
+        "Tiago", "André", "Filipe", "Mateus", "Tomé",
+        "Barnabé", "Silas", "Timóteo", "Tito", "Apolo",
+        "Priscila", "Áquila", "Lucas", "Marcos", "Estêvão",
+        "Nicodemos", "Zaqueu", "Lázaro", "Marta", "Maria Madalena",
+        "Herodes", "Pilatos", "fariseus", "saduceus", "escribas",
+        
+        # --- Common Connector Words ---
+        "portanto", "então", "porque", "pois", "assim",
+        "entretanto", "todavia", "contudo", "porém", "mas",
+        "logo", "ora", "agora", "antes", "depois",
+        "primeiramente", "consequentemente", "além disso",
+        "de fato", "na verdade", "certamente", "claramente",
+        
+        # --- Preaching Style Words ---
+        "amados", "queridos", "povo de Deus", "santos", "eleitos",
+        "ouçam", "vejam", "percebam", "entendam", "compreendam",
+        "lembrem-se", "guardem", "apliquem", "pratiquem",
+        "creiam", "confiem", "esperem", "amem", "sirvam",
+        
+        # --- English terms (for bilingual recognition) ---
         "expository sermon", "verse by verse", "Biblical exposition",
-        "Reformed theology", "let us turn to", "open your Bibles",
-        "grace", "salvation", "redemption", "Scripture", "Gospel"
+        "Reformed theology", "grace", "salvation", "redemption",
     ]
     
     def __init__(self, source_language, target_languages, display_languages, test_mode: int,
@@ -1185,6 +1431,23 @@ class TestHarnessSystem:
         # Queue drain time tracking (most reliable latency measure)
         self.audio_end_time = None
         self.final_display_time = None
+        
+        # Stream tracking
+        self.stream_start_time = None
+        self.first_result_time = None
+        self.stream_restart_count = 0
+        
+        # Early interim display tracking
+        self.interim_words_displayed = 0  # How many words from current interim we've displayed
+        self.interim_text_displayed = ""  # What text we've already shown from interim
+        
+        # Restart gap tracking
+        self.restart_gaps = []  # List of (restart_time, gap_duration, last_segment_time)
+        self.last_segment_time = None  # When we last received a segment
+        
+        # Skipped content tracking
+        self.skipped_finals_count = 0  # FINAL results skipped due to too few new words
+        self.skipped_finals_words = 0  # Total words in skipped FINAL results
         
         print(f"\nTEST - TEST HARNESS INITIALIZED")
         print(f"   Mode: {test_mode} - {self.test_config['name']}")
@@ -1479,25 +1742,91 @@ class TestHarnessSystem:
     def _audio_processing(self):
         """Audio processing with full instrumentation"""
         
+        # Determine model based on test config
+        if self.test_config.get('use_default_model', False):
+            speech_model = "default"
+            print("   Using 'default' model for minimal latency")
+        elif self.test_config.get('use_short_model', False):
+            speech_model = "latest_short"
+            print("   Using 'latest_short' model for faster recognition")
+        else:
+            speech_model = "latest_long"
+            print("   Using 'latest_long' model for accuracy")
+        
+        # Determine if we should enable interim results at API level
+        # This forces Google to process more frequently even if we don't display interim results
+        api_interim = self.test_config.get('api_interim_results', False) or \
+                      self.test_config.get('use_interim_results', False)
+        
+        if self.test_config.get('api_interim_results', False):
+            print("   API interim results ENABLED (forces faster processing)")
+        
+        # Check for minimal latency settings
+        use_enhanced = not self.test_config.get('disable_enhanced', False)
+        use_punctuation = not self.test_config.get('disable_punctuation', False)
+        use_speech_context = not self.test_config.get('disable_speech_context', False)
+        
+        if self.test_config.get('disable_enhanced', False):
+            print("   Enhanced model DISABLED (faster processing)")
+        if self.test_config.get('disable_punctuation', False):
+            print("   Auto-punctuation DISABLED (faster returns)")
+        if self.test_config.get('disable_speech_context', False):
+            print("   Speech context hints DISABLED (faster processing)")
+        else:
+            print("   Speech context hints ENABLED (better theological term recognition)")
+        
+        # Build speech contexts only if enabled
+        if use_speech_context:
+            speech_contexts = [speech.SpeechContext(phrases=self.SERMON_CONTEXT_HINTS, boost=15)]
+        else:
+            speech_contexts = []
+        
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
             sample_rate_hertz=RATE,
             language_code=self.source_language[0],
-            enable_automatic_punctuation=True,
-            use_enhanced=True,
-            model="latest_long",
-            speech_contexts=[
-                speech.SpeechContext(phrases=self.SERMON_CONTEXT_HINTS, boost=15)
-            ],
+            enable_automatic_punctuation=use_punctuation,
+            use_enhanced=use_enhanced,
+            model=speech_model,
+            speech_contexts=speech_contexts,
         )
         
-        streaming_config = speech.StreamingRecognitionConfig(
-            config=config,
-            interim_results=self.test_config.get('use_interim_results', False),
-            single_utterance=False
-        )
+        # Check for voice activity timeout settings
+        use_voice_timeout = self.test_config.get('use_voice_activity_timeout', False)
+        
+        if use_voice_timeout:
+            speech_start_sec = self.test_config.get('speech_start_timeout_sec', 5)
+            speech_end_sec = self.test_config.get('speech_end_timeout_sec', 1)
+            
+            print(f"   Voice Activity Timeout ENABLED")
+            print(f"      Speech start timeout: {speech_start_sec} seconds")
+            print(f"      Speech end timeout: {speech_end_sec} seconds (forces faster finalization)")
+            
+            voice_timeout = speech.StreamingRecognitionConfig.VoiceActivityTimeout(
+                speech_start_timeout=duration_pb2.Duration(seconds=speech_start_sec),
+                speech_end_timeout=duration_pb2.Duration(seconds=speech_end_sec),
+            )
+            
+            streaming_config = speech.StreamingRecognitionConfig(
+                config=config,
+                interim_results=api_interim,
+                single_utterance=False,
+                voice_activity_timeout=voice_timeout,
+            )
+        else:
+            streaming_config = speech.StreamingRecognitionConfig(
+                config=config,
+                interim_results=api_interim,
+                single_utterance=False
+            )
         
         self.audio_streamer.start_stream()
+        
+        # Track streaming statistics
+        self.stream_start_time = datetime.now()
+        
+        print(f"\n   Streaming started at {self.stream_start_time.strftime('%H:%M:%S')}")
+        print(f"   Waiting for first recognition result...")
         
         while self.display.is_running:
             # Check if file playback finished
@@ -1555,11 +1884,76 @@ class TestHarnessSystem:
                     for result in response.results:
                         transcript = result.alternatives[0].transcript
                         is_final = result.is_final
+                        word_count = len(transcript.split())
                         
-                        # Use interim results if configured
-                        if not is_final and not self.test_config.get('use_interim_results'):
-                            print(f"(interim) {transcript}", end='\r')
-                            continue
+                        # Check for early interim display mode
+                        early_interim_enabled = self.test_config.get('early_interim_display', False)
+                        early_interim_threshold = self.test_config.get('early_interim_word_threshold', 20)
+                        
+                        # Handle interim results
+                        if not is_final:
+                            if early_interim_enabled:
+                                # Early interim display mode - display after threshold words
+                                new_word_count = word_count - self.interim_words_displayed
+                                
+                                if new_word_count >= early_interim_threshold:
+                                    # We have enough NEW words to display
+                                    words = transcript.split()
+                                    
+                                    # Extract only the NEW words (not already displayed)
+                                    new_text = ' '.join(words[self.interim_words_displayed:])
+                                    
+                                    print(f"(early-interim) {word_count} total, displaying {new_word_count} NEW words")
+                                    
+                                    # Update tracking BEFORE processing
+                                    self.interim_words_displayed = word_count
+                                    self.interim_text_displayed = transcript
+                                    
+                                    # Use new_text for translation and display
+                                    transcript = new_text
+                                    word_count = len(transcript.split())
+                                    # Continue to process this for display
+                                else:
+                                    # Not enough NEW words yet
+                                    print(f"(interim) {word_count} total, {new_word_count} new - waiting for {early_interim_threshold} new...", end='\r')
+                                    continue
+                            elif not self.test_config.get('use_interim_results'):
+                                # Standard mode - skip interim
+                                print(f"(interim) {transcript}", end='\r')
+                                continue
+                        else:
+                            # FINAL result arrived
+                            if early_interim_enabled and self.interim_words_displayed > 0:
+                                # We displayed interim, now show remaining NEW words only
+                                new_word_count = word_count - self.interim_words_displayed
+                                
+                                if new_word_count > 2:  # Only display if meaningful new content (reduced from 5)
+                                    print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] +{new_word_count} new words from final")
+                                    # Extract just the NEW words
+                                    words = transcript.split()
+                                    transcript = ' '.join(words[self.interim_words_displayed:])
+                                    word_count = len(transcript.split())
+                                else:
+                                    print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] Final received (+{new_word_count} words, skipping)")
+                                    # Track skipped FINAL content
+                                    self.skipped_finals_count += 1
+                                    self.skipped_finals_words += new_word_count
+                                    # Reset tracking for next utterance
+                                    self.interim_words_displayed = 0
+                                    self.interim_text_displayed = ""
+                                    continue  # Skip since we already displayed most of it
+                            
+                            # Reset interim tracking for next utterance
+                            self.interim_words_displayed = 0
+                            self.interim_text_displayed = ""
+                        
+                        # Track first result timing
+                        if self.first_result_time is None:
+                            self.first_result_time = datetime.now()
+                            time_to_first = (self.first_result_time - self.stream_start_time).total_seconds()
+                            print(f"\n   FIRST RESULT received at {self.first_result_time.strftime('%H:%M:%S')}")
+                            print(f"   Time to first result: {time_to_first:.1f} seconds")
+                            print("-" * 50)
                         
                         # Create base segment data
                         self.segment_counter += 1
@@ -1567,6 +1961,9 @@ class TestHarnessSystem:
                         timestamp_spoken = self.last_audio_timestamp or batch_start_time
                         timestamp_recognized = datetime.now()
                         original_word_count = len(transcript.split())
+                        
+                        # Track last segment time for restart gap calculation
+                        self.last_segment_time = timestamp_recognized
                         
                         # Translate
                         translations = self.translate_to_multiple(transcript)
@@ -1693,7 +2090,28 @@ class TestHarnessSystem:
                         if self.audio_streamer.is_finished:
                             continue
                     if not self.is_paused:
-                        print(f"\nWARNING:  Stream timeout - restarting...")
+                        self.stream_restart_count += 1
+                        restart_time = datetime.now()
+                        
+                        # Calculate gap since last segment
+                        if self.last_segment_time:
+                            gap_duration = (restart_time - self.last_segment_time).total_seconds()
+                            self.restart_gaps.append({
+                                'restart_num': self.stream_restart_count,
+                                'restart_time': restart_time,
+                                'last_segment_time': self.last_segment_time,
+                                'gap_duration': gap_duration
+                            })
+                            print(f"\nWARNING: Stream timeout #{self.stream_restart_count} - restarting...")
+                            print(f"   Gap since last segment: {gap_duration:.1f} seconds")
+                            print(f"   (This is normal - Google limits streams to ~5 minutes)")
+                        else:
+                            print(f"\nWARNING: Stream timeout #{self.stream_restart_count} - restarting...")
+                            print(f"   (This is normal - Google limits streams to ~5 minutes)")
+                        
+                        # Reset interim tracking on stream restart
+                        self.interim_words_displayed = 0
+                        self.interim_text_displayed = ""
                     time.sleep(1)
                     continue
                 else:
@@ -1863,22 +2281,364 @@ Over 100 words:  {wc_over_100:3d} ({100*wc_over_100/total_wc:.1f}%)
 
 """
         
+        # Recognition latency analysis
+        recognition_latencies = [s.latency_recognition for s in self.session.segments if not s.was_split or s.chunk_number == 1]
+        if recognition_latencies:
+            avg_recog = sum(recognition_latencies) / len(recognition_latencies)
+            max_recog = max(recognition_latencies)
+            min_recog = min(recognition_latencies)
+            
+            # Trend analysis for recognition
+            if len(recognition_latencies) > 4:
+                first_half_recog = recognition_latencies[:len(recognition_latencies)//2]
+                second_half_recog = recognition_latencies[len(recognition_latencies)//2:]
+                first_avg_recog = sum(first_half_recog) / len(first_half_recog)
+                second_avg_recog = sum(second_half_recog) / len(second_half_recog)
+                recog_trend = second_avg_recog - first_avg_recog
+            else:
+                first_avg_recog = 0
+                second_avg_recog = 0
+                recog_trend = 0
+            
+            recog_trend_str = "INCREASING" if recog_trend > 5 else "STABLE" if abs(recog_trend) <= 5 else "DECREASING"
+            
+            # Recognition coverage analysis - detect if Google is skipping audio
+            # Count total words recognized (from original segments, not chunks)
+            total_words_recognized = sum(s.original_word_count if s.original_word_count else s.word_count 
+                                         for s in self.session.segments 
+                                         if not s.was_split or s.chunk_number == 1)
+            
+            # Estimate expected words based on audio duration
+            # Typical sermon speaking rate: 120-150 words per minute
+            # Using 130 wpm as baseline (conservative estimate)
+            audio_duration_minutes = self.session.duration_seconds / 60
+            expected_words_low = audio_duration_minutes * 100  # Slow speaker
+            expected_words_mid = audio_duration_minutes * 130  # Average speaker
+            expected_words_high = audio_duration_minutes * 160  # Fast speaker
+            
+            # Calculate coverage percentage (using mid estimate)
+            coverage_percent = (total_words_recognized / expected_words_mid * 100) if expected_words_mid > 0 else 0
+            
+            # Determine coverage status
+            if coverage_percent >= 80:
+                coverage_status = "EXCELLENT - Google captured most/all speech"
+            elif coverage_percent >= 60:
+                coverage_status = "GOOD - Minor gaps possible"
+            elif coverage_percent >= 40:
+                coverage_status = "WARNING - Google may be skipping significant portions"
+            else:
+                coverage_status = "POOR - Google likely skipping large portions of audio"
+            
+            recognition_section = f"""
+{'='*70}
+RECOGNITION LATENCY ANALYSIS (Google Speech API)
+{'='*70}
+Average Recognition Time: {avg_recog:.2f} seconds
+Maximum Recognition Time: {max_recog:.2f} seconds
+Minimum Recognition Time: {min_recog:.2f} seconds
+
+Recognition Trend:
+  First Half Average:  {first_avg_recog:.2f} seconds
+  Second Half Average: {second_avg_recog:.2f} seconds
+  Trend: {recog_trend:+.2f} seconds ({recog_trend_str})
+
+{'='*70}
+RECOGNITION COVERAGE ANALYSIS (Is Google Skipping Audio?)
+{'='*70}
+Audio Duration: {audio_duration_minutes:.1f} minutes
+
+Expected Words (based on speaking rate):
+  Slow speaker (100 wpm):   {expected_words_low:.0f} words
+  Average speaker (130 wpm): {expected_words_mid:.0f} words
+  Fast speaker (160 wpm):   {expected_words_high:.0f} words
+
+Actual Words Recognized: {total_words_recognized} words
+Coverage (vs average):   {coverage_percent:.1f}%
+
+Status: {coverage_status}
+
+Note: If coverage is below 60%, Google may be dropping audio segments.
+This can happen with poor audio quality, heavy accents, or background noise.
+"""
+        else:
+            recognition_section = ""
+        
+        # Calculate time to first result
+        if self.stream_start_time and self.first_result_time:
+            time_to_first_result = (self.first_result_time - self.stream_start_time).total_seconds()
+            time_to_first_str = f"{time_to_first_result:.1f} seconds"
+        else:
+            time_to_first_str = "Not measured"
+        
+        # Check for fast recognition settings
+        fast_recognition = self.test_config.get('force_faster_recognition', False)
+        use_short_model = self.test_config.get('use_short_model', False)
+        use_default_model = self.test_config.get('use_default_model', False)
+        api_interim = self.test_config.get('api_interim_results', False)
+        disable_enhanced = self.test_config.get('disable_enhanced', False)
+        disable_punctuation = self.test_config.get('disable_punctuation', False)
+        disable_speech_context = self.test_config.get('disable_speech_context', False)
+        
+        if disable_enhanced:
+            # Mode 10/12 - Minimal Latency variants
+            model_name = "default" if use_default_model else ("latest_short" if use_short_model else "latest_long")
+            hints_status = "OFF" if disable_speech_context else "ON"
+            fast_recog_str = f"MINIMAL LATENCY (model: {model_name}, enhanced: OFF, punctuation: OFF, hints: {hints_status})"
+        elif fast_recognition:
+            model_name = "latest_short" if use_short_model else "latest_long"
+            fast_recog_str = f"Enabled (model: {model_name}, API interim: {api_interim})"
+        else:
+            fast_recog_str = "Disabled"
+        
+        # Voice activity timeout settings
+        use_voice_timeout = self.test_config.get('use_voice_activity_timeout', False)
+        if use_voice_timeout:
+            speech_end_sec = self.test_config.get('speech_end_timeout_sec', 1)
+            voice_timeout_str = f"Enabled (speech_end_timeout: {speech_end_sec}s)"
+        else:
+            voice_timeout_str = "Disabled"
+        
+        # Early interim display settings
+        early_interim_enabled = self.test_config.get('early_interim_display', False)
+        if early_interim_enabled:
+            early_threshold = self.test_config.get('early_interim_word_threshold', 20)
+            early_interim_str = f"Enabled (display after {early_threshold} words)"
+        else:
+            early_interim_str = "Disabled"
+        
+        # Build restart gap analysis section
+        if self.restart_gaps:
+            total_gap_time = sum(g['gap_duration'] for g in self.restart_gaps)
+            avg_gap = total_gap_time / len(self.restart_gaps)
+            estimated_words_lost = int(total_gap_time * 130 / 60)  # Assume 130 wpm
+            
+            restart_details = []
+            for gap in self.restart_gaps:
+                restart_details.append(
+                    f"  Restart #{gap['restart_num']}: {gap['gap_duration']:.1f}s gap "
+                    f"(at {gap['restart_time'].strftime('%H:%M:%S')})"
+                )
+            restart_details_str = '\n'.join(restart_details)
+            
+            restart_gap_section = f"""
+RESTART GAP ANALYSIS (Audio Lost During Stream Restarts)
+{'='*70}
+Total Restarts:        {len(self.restart_gaps)}
+Total Gap Time:        {total_gap_time:.1f} seconds
+Average Gap:           {avg_gap:.1f} seconds
+Estimated Words Lost:  ~{estimated_words_lost} words (at 130 wpm)
+
+RESTART DETAILS
+---------------
+{restart_details_str}
+
+Note: Google Speech API has a ~5 minute streaming limit.
+Stream restarts are unavoidable; gaps represent audio that was not processed.
+{'='*70}
+"""
+        else:
+            restart_gap_section = ""
+        
+        # =================================================================
+        # BUILD KEY METRICS OVERVIEW SECTION
+        # =================================================================
+        
+        # Calculate content loss
+        words_lost_restarts = int(sum(g['gap_duration'] for g in self.restart_gaps) * 130 / 60) if self.restart_gaps else 0
+        words_lost_skipped = self.skipped_finals_words
+        total_words_lost = words_lost_restarts + words_lost_skipped
+        
+        # Get expected words for percentage calculation
+        audio_duration_minutes = self.session.duration_seconds / 60
+        expected_words = audio_duration_minutes * 130  # Average speaker
+        content_loss_percent = (total_words_lost / expected_words * 100) if expected_words > 0 else 0
+        
+        # Calculate coverage if we have recognition data
+        total_words_recognized = sum(s.original_word_count if s.original_word_count else s.word_count 
+                                     for s in self.session.segments 
+                                     if not s.was_split or s.chunk_number == 1)
+        coverage_pct = (total_words_recognized / expected_words * 100) if expected_words > 0 else 0
+        
+        # Calculate percentages for distribution
+        total_waits_for_pct = len(queue_wait_times) if queue_wait_times else 1
+        under_3_pct = (under_3 / total_waits_for_pct) * 100
+        over_12_pct = (over_12 / total_waits_for_pct) * 100
+        
+        # Determine emoji status for each metric
+        # Duration - informational only
+        duration_emoji = "⏱️"
+        
+        # Coverage
+        if coverage_pct >= 80:
+            coverage_emoji = "✅"
+        elif coverage_pct >= 60:
+            coverage_emoji = "⚠️"
+        else:
+            coverage_emoji = "❌"
+        
+        # Average Wait
+        if avg_queue_wait <= 2:
+            avg_wait_emoji = "✅"
+        elif avg_queue_wait <= 5:
+            avg_wait_emoji = "⚠️"
+        else:
+            avg_wait_emoji = "❌"
+        
+        # Under 3 seconds %
+        if under_3_pct >= 90:
+            under_3_emoji = "✅"
+        elif under_3_pct >= 70:
+            under_3_emoji = "⚠️"
+        else:
+            under_3_emoji = "❌"
+        
+        # Over 12 seconds %
+        if over_12_pct <= 2:
+            over_12_emoji = "✅"
+        elif over_12_pct <= 10:
+            over_12_emoji = "⚠️"
+        else:
+            over_12_emoji = "❌"
+        
+        # Queue Drain
+        if queue_drain_time is not None:
+            if queue_drain_time <= 5:
+                drain_emoji = "✅"
+            elif queue_drain_time <= 15:
+                drain_emoji = "⚠️"
+            else:
+                drain_emoji = "❌"
+            drain_value = f"{queue_drain_time:.1f} seconds"
+        else:
+            drain_emoji = "✅"
+            drain_value = "0.0 seconds"
+        
+        # Trend
+        if abs(trend_per_minute) <= 0.1:
+            trend_emoji = "✅"
+        elif trend_per_minute <= 0.3:
+            trend_emoji = "⚠️"
+        else:
+            trend_emoji = "❌"
+        
+        # Content Loss
+        if content_loss_percent <= 2:
+            loss_emoji = "✅"
+        elif content_loss_percent <= 5:
+            loss_emoji = "⚠️"
+        else:
+            loss_emoji = "❌"
+        
+        # Restart gaps average
+        avg_gap = sum(g['gap_duration'] for g in self.restart_gaps) / len(self.restart_gaps) if self.restart_gaps else 0
+        if avg_gap <= 5:
+            gap_emoji = "✅"
+        elif avg_gap <= 15:
+            gap_emoji = "⚠️"
+        else:
+            gap_emoji = "❌"
+        
+        # Build Final Verdict
+        issues = []
+        if coverage_emoji == "❌":
+            issues.append("Low coverage")
+        if avg_wait_emoji == "❌":
+            issues.append("High average wait")
+        if under_3_emoji == "❌":
+            issues.append("Low under-3-sec rate")
+        if over_12_emoji == "❌":
+            issues.append("High over-12-sec rate")
+        if trend_emoji == "❌":
+            issues.append("Queue building up")
+        if loss_emoji == "❌":
+            issues.append("High content loss")
+        
+        warnings = []
+        if coverage_emoji == "⚠️":
+            warnings.append("Coverage could improve")
+        if avg_wait_emoji == "⚠️":
+            warnings.append("Wait times slightly high")
+        if under_3_emoji == "⚠️":
+            warnings.append("Under-3-sec rate could improve")
+        if over_12_emoji == "⚠️":
+            warnings.append("Some slow segments")
+        if trend_emoji == "⚠️":
+            warnings.append("Queue trending up slightly")
+        if loss_emoji == "⚠️":
+            warnings.append("Moderate content loss")
+        
+        # Determine overall verdict
+        if not issues and not warnings:
+            verdict_emoji = "🎉"
+            verdict_text = "PRODUCTION READY - All metrics excellent!"
+        elif not issues and warnings:
+            verdict_emoji = "👍"
+            verdict_text = f"GOOD - Minor concerns: {', '.join(warnings)}"
+        elif len(issues) <= 2:
+            verdict_emoji = "⚠️"
+            verdict_text = f"NEEDS ATTENTION - Issues: {', '.join(issues)}"
+        else:
+            verdict_emoji = "❌"
+            verdict_text = f"NOT READY - Multiple issues: {', '.join(issues)}"
+        
+        # Get audio filename for display
+        audio_filename = os.path.basename(self.audio_file_path) if self.audio_file_path else 'N/A (microphone)'
+        
+        # Build overview section
+        overview_section = f"""
+{'='*70}
+                        QUICK OVERVIEW
+{'='*70}
+Audio File: {audio_filename}
+
+KEY METRICS SUMMARY
+-------------------
+{duration_emoji} Duration:        {self.session.duration_seconds/60:.1f} minutes ({len(self.session.segments)} segments)
+{coverage_emoji} Coverage:        {coverage_pct:.1f}% (target: >= 80%)
+{avg_wait_emoji} Average Wait:    {avg_queue_wait:.2f} seconds (target: <= 2 sec)
+{under_3_emoji} Under 3 sec:     {under_3_pct:.1f}% (target: >= 90%)
+{over_12_emoji} Over 12 sec:     {over_12_pct:.1f}% (target: <= 2%)
+{drain_emoji} Queue Drain:     {drain_value} (target: <= 5 sec)
+{trend_emoji} Trend:           {trend_sign}{trend_per_minute:.2f} sec/min (target: stable)
+
+CONTENT LOSS ANALYSIS
+---------------------
+{gap_emoji} Restart Gaps:    ~{words_lost_restarts} words ({len(self.restart_gaps)} restarts, {avg_gap:.1f}s avg gap)
+   Skipped FINALs:  {words_lost_skipped} words ({self.skipped_finals_count} segments)
+{loss_emoji} TOTAL LOST:      ~{total_words_lost} words ({content_loss_percent:.1f}% of expected)
+
+FINAL VERDICT
+-------------
+{verdict_emoji} {verdict_text}
+
+{'='*70}
+"""
+        
         summary = f"""
 {'='*70}
 TEST SUMMARY: {self.test_config['name']}
 {'='*70}
-
+{overview_section}
 TEST CONFIGURATION
 ------------------
 Mode: {self.test_mode} - {self.test_config['name']}
 Description: {self.test_config['description']}
 Audio Source: {self.audio_source}
+Audio File: {os.path.basename(self.audio_file_path) if self.audio_file_path else 'N/A (microphone)'}
 Duration Limit: {duration_limit_str}
 Reading Speed: {self.test_config['reading_speed']} wpm
 Min Display Time: {self.test_config['min_display_time']}s
 Fade Duration: {self.test_config['fade_duration']}s
 Chunk Splitting: {'Enabled (threshold: ' + str(chunk_threshold) + ' words)' if chunk_split_enabled else 'Disabled'}
+Fast Recognition: {fast_recog_str}
+Voice Activity Timeout: {voice_timeout_str}
+Early Interim Display: {early_interim_str}
 
+STREAMING STATISTICS
+--------------------
+Time to First Result: {time_to_first_str}
+Stream Restarts:      {self.stream_restart_count}
+{restart_gap_section}
 TIMING STATISTICS
 -----------------
 Test Duration: {self.session.duration_seconds/60:.1f} minutes
@@ -1890,6 +2650,11 @@ Segments Processed: {len(self.session.segments)}
 Segments Displayed: {self.display.segments_displayed}
 Segments Skipped:   {self.display.segments_skipped}
 Segments/Minute:    {segments_per_min:.1f}
+
+SKIPPED CONTENT (Early Interim Mode)
+------------------------------------
+Skipped FINAL results: {self.skipped_finals_count} (had <= 2 new words)
+Total words skipped:   {self.skipped_finals_words}
 
 {'='*70}
 QUEUE DRAIN TIME (Overall System Latency)
@@ -1922,7 +2687,7 @@ Under 3 seconds:  {under_3:3d} ({100*under_3/total_waits:.1f}%) - Excellent
 5-8 seconds:      {wait_5_8:3d} ({100*wait_5_8/total_waits:.1f}%) - Acceptable
 8-12 seconds:     {wait_8_12:3d} ({100*wait_8_12/total_waits:.1f}%) - Slow
 Over 12 seconds:  {over_12:3d} ({100*over_12/total_waits:.1f}%) - Too slow
-{chunk_section}
+{chunk_section}{recognition_section}
 {'='*70}
 ANALYSIS
 {'='*70}
@@ -1973,6 +2738,15 @@ def select_test_mode():
             print(f"     Catchup mode enabled (threshold: {config.get('catchup_threshold')} items)")
         if config.get('chunk_split_enabled'):
             print(f"     Chunk splitting: max {config.get('chunk_split_threshold')} words per chunk")
+        if config.get('force_faster_recognition') and not config.get('disable_enhanced'):
+            print(f"     FAST RECOGNITION: API interim enabled")
+        if config.get('disable_enhanced'):
+            hints_status = "no hints" if config.get('disable_speech_context', True) else "hints ON"
+            print(f"     MINIMAL LATENCY: default model, no enhanced, no punctuation, {hints_status}")
+        if config.get('use_voice_activity_timeout'):
+            print(f"     VOICE TIMEOUT: speech_end={config.get('speech_end_timeout_sec')}s (forces faster finalization)")
+        if config.get('early_interim_display'):
+            print(f"     EARLY INTERIM: Display after {config.get('early_interim_word_threshold')} words (don't wait for FINAL)")
     
     print("\n" + "-"*70)
     print("  L. View last test results")
@@ -1981,7 +2755,7 @@ def select_test_mode():
     print("-"*70)
     
     while True:
-        choice = input("\nEnter choice (0-7, L, C, Q): ").strip().upper()
+        choice = input("\nEnter choice (0-12, L, C, Q): ").strip().upper()
         
         if choice == 'Q':
             print("Exiting...")
@@ -1992,7 +2766,7 @@ def select_test_mode():
         elif choice == 'C':
             compare_all_results()
             return select_test_mode()  # Return to menu
-        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7']:
+        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']:
             return int(choice)
         else:
             print("Invalid choice. Try again.")
