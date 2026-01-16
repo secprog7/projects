@@ -684,6 +684,7 @@ class TestHarnessDisplay:
         self.text_queue = queue.Queue()
         self.is_running = False
         self.is_paused = False
+        self.is_hard_paused = False  # Hard pause = full stop
         self.in_catchup_mode = False
         
         # Store language names
@@ -958,13 +959,32 @@ class TestHarnessDisplay:
             
             time.sleep(0.2)
     
-    def set_paused(self, paused):
-        """Update pause state"""
+    def set_paused(self, paused, hard=False):
+        """Update pause state with visual indicator
+        
+        Args:
+            paused: Whether paused
+            hard: If True, this is a hard pause (full stop)
+        """
         self.is_paused = paused
+        self.is_hard_paused = hard if paused else False
+        
         if paused:
-            self.status_bar.config(text="🟡 PAUSED - Ctrl+Shift+R to resume", bg='orange')
+            if hard:
+                self.status_bar.config(
+                    text="⏹️ STOPPED - No API calls - Ctrl+Shift+R to resume fresh", 
+                    bg='#cc0000'  # Dark red
+                )
+            else:
+                self.status_bar.config(
+                    text="⏸️ PAUSED - Queue building - Ctrl+Shift+R to resume | Ctrl+Shift+X to stop", 
+                    bg='orange'
+                )
         else:
-            self.status_bar.config(text="🟢 ACTIVE - Ctrl+Shift+P to pause", bg='green')
+            self.status_bar.config(
+                text="🟢 ACTIVE - Ctrl+Shift+P to pause | Ctrl+Shift+X to stop", 
+                bg='green'
+            )
     
     def add_translation(self, translations: list, segment_data: SegmentData, is_interim=False):
         """Add translation to queue with tracking data
@@ -1604,6 +1624,7 @@ class TestHarnessSystem:
         
         # Pause control
         self.is_paused = True
+        self.is_hard_paused = False  # Hard pause = full stop, no API calls
         self.pause_start_time = None
         self.total_pause_time = 0
         self.active_start_time = None
@@ -1622,11 +1643,13 @@ class TestHarnessSystem:
             self._add_progress_bar()
         
         # Keyboard bindings
-        self.display.root.bind('<Control-Shift-P>', self._pause)
+        self.display.root.bind('<Control-Shift-P>', self._pause)       # Soft pause
         self.display.root.bind('<Control-Shift-p>', self._pause)
-        self.display.root.bind('<Control-Shift-R>', self._resume)
+        self.display.root.bind('<Control-Shift-X>', self._hard_pause)  # Hard pause (full stop)
+        self.display.root.bind('<Control-Shift-x>', self._hard_pause)
+        self.display.root.bind('<Control-Shift-R>', self._resume)      # Resume from either
         self.display.root.bind('<Control-Shift-r>', self._resume)
-        self.display.root.bind('<Control-Shift-S>', self._stop)
+        self.display.root.bind('<Control-Shift-S>', self._stop)        # Stop test
         self.display.root.bind('<Control-Shift-s>', self._stop)
         
         # Initialize appropriate audio streamer
@@ -1740,26 +1763,97 @@ class TestHarnessSystem:
             ))
     
     def _pause(self, event=None):
+        """Soft Pause - stops display but queue continues building"""
         if not self.is_paused:
             self.is_paused = True
+            self.is_hard_paused = False  # Soft pause
             self.pause_start_time = datetime.now()
-            self.display.set_paused(True)
+            self.display.set_paused(True, hard=False)
             
             if self.active_start_time:
                 self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
             
-            print(f"\n⏸️  [{datetime.now().strftime('%H:%M:%S')}] PAUSED")
+            print(f"\n⏸️  [{datetime.now().strftime('%H:%M:%S')}] SOFT PAUSED (queue still building)")
+            print(f"    Press Ctrl+Shift+R to resume, or Ctrl+Shift+X for hard stop")
+    
+    def _hard_pause(self, event=None):
+        """Hard Pause - full stop, no API calls, clears queues"""
+        if not self.is_paused or not self.is_hard_paused:
+            was_soft_paused = self.is_paused and not getattr(self, 'is_hard_paused', False)
+            
+            self.is_paused = True
+            self.is_hard_paused = True
+            self.pause_start_time = datetime.now() if not was_soft_paused else self.pause_start_time
+            self.display.set_paused(True, hard=True)
+            
+            if self.active_start_time and not was_soft_paused:
+                self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
+            
+            # Clear queues to stop all data flow
+            queues_cleared = self._clear_all_queues()
+            
+            print(f"\n⏹️  [{datetime.now().strftime('%H:%M:%S')}] HARD STOPPED")
+            print(f"    Audio streaming: STOPPED")
+            print(f"    Translation API: STOPPED")
+            print(f"    Display queue: CLEARED ({queues_cleared['display']} items)")
+            print(f"    Audio buffer: CLEARED ({queues_cleared['audio']} chunks)")
+            print(f"    Press Ctrl+Shift+R to resume fresh")
+    
+    def _clear_all_queues(self):
+        """Clear all queues and buffers for hard pause"""
+        cleared = {'display': 0, 'audio': 0, 'translation': 0}
+        
+        # Clear display queue (text_queue in TestHarnessDisplay)
+        if hasattr(self.display, 'text_queue'):
+            while not self.display.text_queue.empty():
+                try:
+                    self.display.text_queue.get_nowait()
+                    cleared['display'] += 1
+                except queue.Empty:
+                    break
+        
+        # Clear audio streamer buffer
+        if hasattr(self, 'audio_streamer') and self.audio_streamer:
+            if hasattr(self.audio_streamer, 'audio_queue'):
+                while not self.audio_streamer.audio_queue.empty():
+                    try:
+                        self.audio_streamer.audio_queue.get_nowait()
+                        cleared['audio'] += 1
+                    except queue.Empty:
+                        break
+        
+        # Clear async comparison queue if exists
+        if hasattr(self, 'async_comparison_queue'):
+            while not self.async_comparison_queue.empty():
+                try:
+                    self.async_comparison_queue.get_nowait()
+                    cleared['translation'] += 1
+                except queue.Empty:
+                    break
+        
+        # Reset interim tracking for fresh start
+        self.interim_words_displayed = 0
+        self.interim_text_displayed = ""
+        
+        return cleared
     
     def _resume(self, event=None):
+        """Resume from either soft or hard pause"""
         if self.is_paused:
+            was_hard_paused = getattr(self, 'is_hard_paused', False)
+            
             self.is_paused = False
+            self.is_hard_paused = False
             self.active_start_time = datetime.now()
-            self.display.set_paused(False)
+            self.display.set_paused(False, hard=False)
             
             if self.pause_start_time:
                 self.total_pause_time += (datetime.now() - self.pause_start_time).total_seconds()
             
-            print(f"\n▶️  [{datetime.now().strftime('%H:%M:%S')}] RESUMED")
+            if was_hard_paused:
+                print(f"\n▶️  [{datetime.now().strftime('%H:%M:%S')}] RESUMED (fresh start)")
+            else:
+                print(f"\n▶️  [{datetime.now().strftime('%H:%M:%S')}] RESUMED")
     
     def _stop(self, event=None):
         print("\n🛑 Stopping test...")
@@ -2799,6 +2893,11 @@ If you see many HIGH severity items, consider:
                         
                         # Track last segment time for restart gap calculation
                         self.last_segment_time = timestamp_recognized
+                        
+                        # Skip translation if hard paused (no API calls during hard pause)
+                        if self.is_hard_paused:
+                            print(f"   [HARD PAUSED] Skipping translation for segment {original_segment_id}")
+                            continue
                         
                         # Translate
                         translations = self.translate_to_multiple(transcript)
