@@ -314,7 +314,218 @@ TEST_MODES = {
         # Early interim display settings - KEY FEATURE
         "early_interim_display": True,
         "early_interim_word_threshold": 15,  # Display interim after this many words (reduced from 20)
+        # Context-aware translation settings (NEW)
+        "save_translation_log": True,        # Save PT/EN pairs for review (NO latency impact)
+        "run_context_comparison": True,      # Run end-of-test context comparison (NO latency impact)
+        "context_aware_translation": False,  # DISABLED - causes significant latency (~500ms per chunk)
+        "context_chunks": 1,                 # How many previous chunks to include (1-3)
     },
+    13: {
+        "name": "Context-Enhanced (Experimental)",
+        "description": "Mode 12 + Glossary consistency + Async context comparison",
+        "reading_speed": 220,
+        "min_display_time": 2.5,
+        "fade_duration": 0.3,
+        "buffer_time": 0.5,
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,
+        "chunk_min_size": 10,
+        # Minimal latency settings
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,
+        "disable_enhanced": True,
+        "disable_punctuation": True,
+        "disable_speech_context": False,
+        "use_voice_activity_timeout": False,
+        # Early interim display settings
+        "early_interim_display": True,
+        "early_interim_word_threshold": 15,
+        # Logging (inherited from Mode 12)
+        "save_translation_log": True,
+        "run_context_comparison": True,
+        "context_aware_translation": False,  # Keep disabled for real-time path
+        "context_chunks": 1,
+        # === NEW MODE 13 FEATURES ===
+        # Option A: Async Context Comparison (background thread)
+        "async_context_comparison": True,    # Compare fast vs context in background
+        "async_context_threads": 2,          # Number of background workers
+        "flag_pronoun_differences": True,    # Flag he/she/it changes
+        "min_difference_threshold": 0.15,    # Min word difference ratio to flag (0-1)
+        # Option B: Glossary Lookup
+        "use_glossary": True,                # Apply theological term consistency
+        "glossary_case_sensitive": False,    # Match regardless of case
+        # Output files
+        "generate_difference_report": True,  # *_context_differences.txt
+        "generate_glossary_report": True,    # *_glossary_corrections.txt
+    },
+}
+
+# =============================================================================
+# THEOLOGICAL GLOSSARY (Portuguese -> English)
+# =============================================================================
+# This ensures consistent translation of theological terms across all chunks
+
+THEOLOGICAL_GLOSSARY = {
+    # === Core Theological Terms ===
+    "graça": "grace",
+    "graca": "grace",
+    "salvação": "salvation",
+    "salvacao": "salvation",
+    "justificação": "justification",
+    "justificacao": "justification",
+    "santificação": "sanctification",
+    "santificacao": "sanctification",
+    "redenção": "redemption",
+    "redencao": "redemption",
+    "propiciação": "propitiation",
+    "propiciacao": "propitiation",
+    "expiação": "atonement",
+    "expiacao": "atonement",
+    "reconciliação": "reconciliation",
+    "reconciliacao": "reconciliation",
+    "regeneração": "regeneration",
+    "regeneracao": "regeneration",
+    "glorificação": "glorification",
+    "glorificacao": "glorification",
+    "eleição": "election",
+    "eleicao": "election",
+    "predestinação": "predestination",
+    "predestinacao": "predestination",
+    "arrependimento": "repentance",
+    "conversão": "conversion",
+    "conversao": "conversion",
+    
+    # === God / Trinity ===
+    "Trindade": "Trinity",
+    "Espírito Santo": "Holy Spirit",
+    "Espirito Santo": "Holy Spirit",
+    "Consolador": "Comforter",
+    "Parácleto": "Paraclete",
+    "Paracleto": "Paraclete",
+    "Messias": "Messiah",
+    "Cristo": "Christ",
+    "Senhor": "Lord",
+    "Cordeiro de Deus": "Lamb of God",
+    "Filho do Homem": "Son of Man",
+    "Filho de Deus": "Son of God",
+    
+    # === Biblical People (ensure consistent naming) ===
+    "Pedro": "Peter",
+    "Paulo": "Paul",
+    "Tiago": "James",
+    "João": "John",
+    "Joao": "John",
+    "Mateus": "Matthew",
+    "Marcos": "Mark",
+    "Lucas": "Luke",
+    "Abraão": "Abraham",
+    "Abraao": "Abraham",
+    "Isaque": "Isaac",
+    "Jacó": "Jacob",
+    "Jaco": "Jacob",
+    "Moisés": "Moses",
+    "Moises": "Moses",
+    "Davi": "David",
+    "Salomão": "Solomon",
+    "Salomao": "Solomon",
+    "Elias": "Elijah",
+    "Eliseu": "Elisha",
+    "Isaías": "Isaiah",
+    "Isaias": "Isaiah",
+    "Jeremias": "Jeremiah",
+    "Ezequiel": "Ezekiel",
+    "Daniel": "Daniel",
+    "Timóteo": "Timothy",
+    "Timoteo": "Timothy",
+    "Barnabé": "Barnabas",
+    "Barnabe": "Barnabas",
+    "Estêvão": "Stephen",
+    "Estevao": "Stephen",
+    "Nicodemos": "Nicodemus",
+    "Zaqueu": "Zacchaeus",
+    "Lázaro": "Lazarus",
+    "Lazaro": "Lazarus",
+    
+    # === Places ===
+    "Jerusalém": "Jerusalem",
+    "Jerusalem": "Jerusalem",
+    "Gólgota": "Golgotha",
+    "Golgota": "Golgotha",
+    "Calvário": "Calvary",
+    "Calvario": "Calvary",
+    "Getsêmani": "Gethsemane",
+    "Getsemani": "Gethsemane",
+    "Galileia": "Galilee",
+    "Galileia": "Galilee",
+    "Judeia": "Judea",
+    "Judéia": "Judea",
+    "Samaria": "Samaria",
+    
+    # === Church Terms ===
+    "igreja": "church",
+    "batismo": "baptism",
+    "ceia do Senhor": "Lord's Supper",
+    "santa ceia": "Holy Communion",
+    "comunhão": "communion",
+    "comunhao": "communion",
+    "congregação": "congregation",
+    "congregacao": "congregation",
+    "presbítero": "elder",
+    "presbitero": "elder",
+    "diácono": "deacon",
+    "diacono": "deacon",
+    "pastor": "pastor",
+    "bispo": "bishop",
+    "apóstolo": "apostle",
+    "apostolo": "apostle",
+    "discípulo": "disciple",
+    "discipulo": "disciple",
+    "fariseus": "Pharisees",
+    "saduceus": "Sadducees",
+    "escribas": "scribes",
+    
+    # === Scripture Terms ===
+    "Escrituras": "Scriptures",
+    "evangelho": "gospel",
+    "epístola": "epistle",
+    "epistola": "epistle",
+    "parábola": "parable",
+    "parabola": "parable",
+    "profecia": "prophecy",
+    "apocalipse": "Revelation",
+    "Apocalipse": "Revelation",
+    
+    # === Sin / Salvation ===
+    "pecado": "sin",
+    "pecador": "sinner",
+    "transgressão": "transgression",
+    "transgressao": "transgression",
+    "iniquidade": "iniquity",
+    "cruz": "cross",
+    "ressurreição": "resurrection",
+    "ressurreicao": "resurrection",
+    "vida eterna": "eternal life",
+    "perdão": "forgiveness",
+    "perdao": "forgiveness",
+    "misericórdia": "mercy",
+    "misericordia": "mercy",
+}
+
+# Reverse glossary for detecting if Google used different terms
+GLOSSARY_ENGLISH_VARIANTS = {
+    "grace": ["grace", "favor", "blessing"],
+    "justification": ["justification", "vindication", "acquittal"],
+    "propitiation": ["propitiation", "atonement", "expiation"],
+    "Holy Spirit": ["Holy Spirit", "Holy Ghost"],
+    "church": ["church", "congregation", "assembly"],
+    "elder": ["elder", "presbyter", "older"],
+    "repentance": ["repentance", "regret", "remorse"],
 }
 
 # Language mappings (same as original)
@@ -1449,6 +1660,30 @@ class TestHarnessSystem:
         self.skipped_finals_count = 0  # FINAL results skipped due to too few new words
         self.skipped_finals_words = 0  # Total words in skipped FINAL results
         
+        # Translation logging and context tracking (NEW)
+        self.translation_log = []  # List of (timestamp, source_text, translations_dict) tuples
+        self.previous_chunks = deque(maxlen=3)  # Store last N chunks for context
+        self.translation_log_file = None  # File handle for translation log
+        
+        # Mode 13: Glossary corrections tracking
+        self.glossary_corrections_log = []  # List of corrections made
+        
+        # Mode 13: Async context comparison
+        self.async_context_differences = []  # Differences found by async comparison
+        self.async_comparison_queue = queue.Queue()  # Queue for async worker
+        self.async_worker_running = False
+        self.async_worker_thread = None
+        
+        # Start async context worker if enabled
+        if self.test_config.get('async_context_comparison', False):
+            self.async_worker_running = True
+            self.async_worker_thread = threading.Thread(target=self._async_context_worker, daemon=True)
+            self.async_worker_thread.start()
+            print(f"   Async Context Comparison: ENABLED (background thread)")
+        
+        if self.test_config.get('use_glossary', False):
+            print(f"   Glossary Lookup: ENABLED ({len(THEOLOGICAL_GLOSSARY)} terms)")
+        
         print(f"\nTEST - TEST HARNESS INITIALIZED")
         print(f"   Mode: {test_mode} - {self.test_config['name']}")
         print(f"   Description: {self.test_config['description']}")
@@ -1530,22 +1765,622 @@ class TestHarnessSystem:
         print("\n🛑 Stopping test...")
         self.display.stop()
     
-    def translate_to_multiple(self, text):
+    def translate_to_multiple(self, text, use_context=True):
+        """Translate text to all target languages
+        
+        Args:
+            text: Text to translate
+            use_context: Whether to include previous chunks as context hint
+        """
         translations = {}
         source_base = self.source_language[0].split('-')[0]
+        
+        # Build context hint if enabled (for synchronous context - Mode 12 style, usually disabled)
+        context_enabled = self.test_config.get('context_aware_translation', False) and use_context
+        context_hint = ""
+        if context_enabled and self.previous_chunks:
+            num_chunks = self.test_config.get('context_chunks', 1)
+            context_parts = list(self.previous_chunks)[-num_chunks:]
+            if context_parts:
+                context_hint = " ".join(context_parts)
         
         for lang_code, lang_name in self.target_languages:
             target_base = lang_code.split('-')[0] if '-' in lang_code else lang_code
             try:
-                result = self.translate_client.translate(
-                    text, target_language=target_base,
-                    source_language=source_base, format_='text', model='nmt'
-                )
-                translations[lang_name] = result['translatedText']
+                # If context is available, prepend it with a separator
+                # Google Translate will use it for better context but we extract only the new part
+                if context_hint:
+                    # Use a separator that won't appear in normal text
+                    full_text = f"{context_hint} ||| {text}"
+                    result = self.translate_client.translate(
+                        full_text, target_language=target_base,
+                        source_language=source_base, format_='text', model='nmt'
+                    )
+                    # Extract only the part after the separator
+                    translated_full = result['translatedText']
+                    if '|||' in translated_full:
+                        translations[lang_name] = translated_full.split('|||')[-1].strip()
+                    else:
+                        # Fallback - separator was translated or removed
+                        translations[lang_name] = translated_full
+                else:
+                    result = self.translate_client.translate(
+                        text, target_language=target_base,
+                        source_language=source_base, format_='text', model='nmt'
+                    )
+                    translations[lang_name] = result['translatedText']
             except Exception as e:
                 translations[lang_name] = f"[Error: {e}]"
         
+        # Apply glossary corrections if enabled (Mode 13 - Option B)
+        glossary_corrections = {}
+        if self.test_config.get('use_glossary', False):
+            translations, glossary_corrections = self._apply_glossary(text, translations)
+        
+        # Update previous chunks for next translation
+        self.previous_chunks.append(text)
+        
+        # Log translation if enabled
+        if self.test_config.get('save_translation_log', False):
+            self.translation_log.append({
+                'timestamp': datetime.now().isoformat(),
+                'source_text': text,
+                'translations': translations.copy(),
+                'context_used': context_hint if context_enabled else None,
+                'glossary_corrections': glossary_corrections if glossary_corrections else None
+            })
+        
+        # Queue async context comparison if enabled (Mode 13 - Option A)
+        if self.test_config.get('async_context_comparison', False):
+            self._queue_async_context_comparison(text, translations.copy())
+        
+        # Track glossary corrections
+        if glossary_corrections and self.test_config.get('generate_glossary_report', False):
+            self.glossary_corrections_log.append({
+                'timestamp': datetime.now().isoformat(),
+                'source_text': text,
+                'corrections': glossary_corrections
+            })
+        
         return translations
+    
+    def _apply_glossary(self, source_text: str, translations: Dict[str, str]) -> tuple:
+        """Apply glossary corrections to translations
+        
+        Args:
+            source_text: Original Portuguese text
+            translations: Dict of translations by language name
+            
+        Returns:
+            Tuple of (corrected_translations, corrections_made)
+        """
+        corrections = {}
+        corrected_translations = translations.copy()
+        
+        case_sensitive = self.test_config.get('glossary_case_sensitive', False)
+        source_lower = source_text.lower() if not case_sensitive else source_text
+        
+        # Check each glossary term
+        for pt_term, en_term in THEOLOGICAL_GLOSSARY.items():
+            pt_check = pt_term if case_sensitive else pt_term.lower()
+            
+            # If Portuguese term is in source text
+            if pt_check in source_lower:
+                # Check each translation
+                for lang_name, translation in corrected_translations.items():
+                    if lang_name == "English (US)" or lang_name == "English (UK)":
+                        trans_lower = translation.lower() if not case_sensitive else translation
+                        
+                        # Check if the expected English term is present
+                        en_check = en_term.lower() if not case_sensitive else en_term
+                        
+                        # Look for variant translations that should be corrected
+                        if en_term in GLOSSARY_ENGLISH_VARIANTS:
+                            variants = GLOSSARY_ENGLISH_VARIANTS[en_term]
+                            for variant in variants:
+                                if variant != en_term:
+                                    variant_check = variant.lower() if not case_sensitive else variant
+                                    if variant_check in trans_lower and en_check not in trans_lower:
+                                        # Replace variant with preferred term
+                                        import re
+                                        pattern = re.compile(re.escape(variant), re.IGNORECASE)
+                                        new_translation = pattern.sub(en_term, corrected_translations[lang_name])
+                                        
+                                        if new_translation != corrected_translations[lang_name]:
+                                            if lang_name not in corrections:
+                                                corrections[lang_name] = []
+                                            corrections[lang_name].append({
+                                                'portuguese': pt_term,
+                                                'original': variant,
+                                                'corrected': en_term
+                                            })
+                                            corrected_translations[lang_name] = new_translation
+        
+        return corrected_translations, corrections
+    
+    def _queue_async_context_comparison(self, source_text: str, fast_translations: Dict[str, str]):
+        """Queue a segment for async context comparison
+        
+        Args:
+            source_text: Original Portuguese text
+            fast_translations: The fast (no context) translations already displayed
+        """
+        if not hasattr(self, 'async_comparison_queue'):
+            return
+        
+        # Get context from previous chunks
+        if self.previous_chunks:
+            num_chunks = self.test_config.get('context_chunks', 1)
+            context_parts = list(self.previous_chunks)[-num_chunks-1:-1]  # Exclude current chunk
+            context = " ".join(context_parts) if context_parts else ""
+        else:
+            context = ""
+        
+        # Add to queue for background processing
+        self.async_comparison_queue.put({
+            'timestamp': datetime.now().isoformat(),
+            'source_text': source_text,
+            'context': context,
+            'fast_translations': fast_translations,
+            'segment_id': self.segment_counter
+        })
+    
+    def _async_context_worker(self):
+        """Background worker for async context comparison"""
+        source_base = self.source_language[0].split('-')[0]
+        
+        while self.async_worker_running:
+            try:
+                item = self.async_comparison_queue.get(timeout=0.5)
+                
+                source_text = item['source_text']
+                context = item['context']
+                fast_translations = item['fast_translations']
+                
+                # Translate with context
+                context_translations = {}
+                
+                for lang_code, lang_name in self.target_languages:
+                    target_base = lang_code.split('-')[0] if '-' in lang_code else lang_code
+                    try:
+                        if context:
+                            # Translate with context
+                            full_text = f"{context} {source_text}"
+                            result = self.translate_client.translate(
+                                full_text, target_language=target_base,
+                                source_language=source_base, format_='text', model='nmt'
+                            )
+                            # We want the full translation to compare flow
+                            context_translations[lang_name] = result['translatedText']
+                        else:
+                            # No context available, skip comparison
+                            context_translations[lang_name] = fast_translations.get(lang_name, "")
+                    except Exception as e:
+                        context_translations[lang_name] = f"[Error: {e}]"
+                
+                # Compare and log differences
+                differences = self._compare_translations(
+                    source_text, fast_translations, context_translations, context
+                )
+                
+                if differences:
+                    self.async_context_differences.append({
+                        'timestamp': item['timestamp'],
+                        'segment_id': item['segment_id'],
+                        'source_text': source_text,
+                        'context': context[:100] + "..." if len(context) > 100 else context,
+                        'differences': differences
+                    })
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"Async context worker error: {e}")
+    
+    def _compare_translations(self, source_text: str, fast: Dict[str, str], 
+                             context: Dict[str, str], context_used: str) -> Dict:
+        """Compare fast vs context translations and identify differences
+        
+        Args:
+            source_text: Original Portuguese text
+            fast: Fast translation (no context)
+            context: Context-aware translation
+            context_used: The context that was used
+            
+        Returns:
+            Dict of differences by language, or empty dict if similar
+        """
+        differences = {}
+        min_threshold = self.test_config.get('min_difference_threshold', 0.15)
+        flag_pronouns = self.test_config.get('flag_pronoun_differences', True)
+        
+        # Pronouns to check (English)
+        pronouns = ['he', 'she', 'it', 'him', 'her', 'his', 'they', 'them', 'their']
+        
+        for lang_name in fast.keys():
+            fast_text = fast.get(lang_name, "")
+            # For context translation, extract just the part that corresponds to source_text
+            context_text = context.get(lang_name, "")
+            
+            # Simple word-based comparison
+            fast_words = set(fast_text.lower().split())
+            context_words = set(context_text.lower().split())
+            
+            # Calculate difference
+            all_words = fast_words | context_words
+            common_words = fast_words & context_words
+            
+            if len(all_words) > 0:
+                difference_ratio = 1 - (len(common_words) / len(all_words))
+            else:
+                difference_ratio = 0
+            
+            # Check for pronoun differences
+            pronoun_diff = False
+            pronoun_details = []
+            if flag_pronouns:
+                for pronoun in pronouns:
+                    in_fast = pronoun in fast_text.lower().split()
+                    in_context = pronoun in context_text.lower().split()
+                    if in_fast != in_context:
+                        pronoun_diff = True
+                        if in_fast:
+                            pronoun_details.append(f"'{pronoun}' in fast only")
+                        else:
+                            pronoun_details.append(f"'{pronoun}' in context only")
+            
+            # Flag if significant difference or pronoun change
+            if difference_ratio >= min_threshold or pronoun_diff:
+                differences[lang_name] = {
+                    'fast_translation': fast_text,
+                    'context_translation': context_text[-len(fast_text)-50:] if len(context_text) > len(fast_text) else context_text,
+                    'difference_ratio': difference_ratio,
+                    'pronoun_difference': pronoun_diff,
+                    'pronoun_details': pronoun_details,
+                    'severity': 'HIGH' if pronoun_diff else ('MEDIUM' if difference_ratio >= 0.3 else 'LOW')
+                }
+        
+        return differences
+    
+    def _save_translation_log(self, base_filename: str):
+        """Save translation log to file for review
+        
+        Args:
+            base_filename: Base filename (without extension) for the log
+        """
+        if not self.translation_log:
+            print("   No translations to log")
+            return None
+        
+        log_filename = f"{base_filename}_translations.txt"
+        
+        with open(log_filename, 'w', encoding='utf-8') as f:
+            f.write("=" * 80 + "\n")
+            f.write("TRANSLATION LOG - For Bilingual Review\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total Segments: {len(self.translation_log)}\n")
+            f.write(f"Source Language: {self.source_language[1]}\n")
+            f.write(f"Target Languages: {', '.join([l[1] for l in self.target_languages])}\n")
+            f.write(f"Context-Aware Translation: {'ENABLED' if self.test_config.get('context_aware_translation') else 'DISABLED'}\n")
+            f.write("\n" + "=" * 80 + "\n\n")
+            
+            for i, entry in enumerate(self.translation_log, 1):
+                f.write(f"--- Segment {i} [{entry['timestamp'].split('T')[1][:8]}] ---\n")
+                f.write(f"SOURCE: {entry['source_text']}\n")
+                for lang_name, translation in entry['translations'].items():
+                    f.write(f"  → {lang_name}: {translation}\n")
+                if entry.get('context_used'):
+                    f.write(f"  [Context: {entry['context_used'][:50]}...]\n")
+                f.write("\n")
+        
+        print(f"   Translation log saved: {log_filename}")
+        return log_filename
+    
+    def _run_context_comparison(self, base_filename: str):
+        """Run context comparison diagnostic
+        
+        Compares chunk-by-chunk translation vs full-context translation
+        to identify potential context loss issues.
+        
+        Args:
+            base_filename: Base filename (without extension) for the report
+        """
+        if not self.translation_log or len(self.translation_log) < 5:
+            print("   Not enough translations for context comparison (need at least 5)")
+            return None
+        
+        comparison_filename = f"{base_filename}_context_comparison.txt"
+        
+        # Concatenate all source texts
+        all_source_texts = [entry['source_text'] for entry in self.translation_log]
+        full_source_text = " ".join(all_source_texts)
+        
+        # Limit to avoid API limits (approx 5000 characters)
+        if len(full_source_text) > 5000:
+            # Take a sample from middle of sermon
+            start_idx = len(self.translation_log) // 3
+            end_idx = start_idx + min(20, len(self.translation_log) // 3)
+            sample_entries = self.translation_log[start_idx:end_idx]
+            sample_source = " ".join([e['source_text'] for e in sample_entries])
+            sample_note = f"(Sample: segments {start_idx+1}-{end_idx} of {len(self.translation_log)})"
+        else:
+            sample_entries = self.translation_log
+            sample_source = full_source_text
+            sample_note = "(Full sermon)"
+        
+        print(f"   Running context comparison {sample_note}...")
+        
+        # Get full-context translation (translate all at once)
+        try:
+            full_context_translations = {}
+            source_base = self.source_language[0].split('-')[0]
+            
+            for lang_code, lang_name in self.target_languages:
+                target_base = lang_code.split('-')[0] if '-' in lang_code else lang_code
+                result = self.translate_client.translate(
+                    sample_source, target_language=target_base,
+                    source_language=source_base, format_='text', model='nmt'
+                )
+                full_context_translations[lang_name] = result['translatedText']
+        except Exception as e:
+            print(f"   Error in full-context translation: {e}")
+            return None
+        
+        # Get chunk-by-chunk concatenated translation
+        chunk_translations = {}
+        for lang_name in [l[1] for l in self.target_languages]:
+            chunk_parts = [entry['translations'].get(lang_name, '') for entry in sample_entries]
+            chunk_translations[lang_name] = " ".join(chunk_parts)
+        
+        # Write comparison report
+        with open(comparison_filename, 'w', encoding='utf-8') as f:
+            f.write("=" * 80 + "\n")
+            f.write("CONTEXT COMPARISON DIAGNOSTIC\n")
+            f.write("Chunk-by-Chunk vs Full-Context Translation\n")
+            f.write("=" * 80 + "\n\n")
+            
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Sample: {len(sample_entries)} segments {sample_note}\n")
+            f.write(f"Source Language: {self.source_language[1]}\n\n")
+            
+            f.write("-" * 80 + "\n")
+            f.write("SOURCE TEXT (Portuguese)\n")
+            f.write("-" * 80 + "\n")
+            f.write(sample_source + "\n\n")
+            
+            for lang_name in [l[1] for l in self.target_languages]:
+                f.write("=" * 80 + "\n")
+                f.write(f"COMPARISON: {lang_name}\n")
+                f.write("=" * 80 + "\n\n")
+                
+                f.write("--- CHUNK-BY-CHUNK (what congregation sees) ---\n")
+                f.write(chunk_translations.get(lang_name, 'N/A') + "\n\n")
+                
+                f.write("--- FULL-CONTEXT (ideal translation) ---\n")
+                f.write(full_context_translations.get(lang_name, 'N/A') + "\n\n")
+                
+                # Simple difference analysis
+                chunk_words = set(chunk_translations.get(lang_name, '').lower().split())
+                full_words = set(full_context_translations.get(lang_name, '').lower().split())
+                
+                only_in_chunk = chunk_words - full_words
+                only_in_full = full_words - chunk_words
+                
+                f.write("--- WORD DIFFERENCES ---\n")
+                f.write(f"Words only in chunk version: {len(only_in_chunk)}\n")
+                if only_in_chunk and len(only_in_chunk) <= 20:
+                    f.write(f"  {', '.join(list(only_in_chunk)[:20])}\n")
+                f.write(f"Words only in full-context: {len(only_in_full)}\n")
+                if only_in_full and len(only_in_full) <= 20:
+                    f.write(f"  {', '.join(list(only_in_full)[:20])}\n")
+                
+                # Calculate similarity
+                total_unique = len(chunk_words | full_words)
+                common = len(chunk_words & full_words)
+                similarity = (common / total_unique * 100) if total_unique > 0 else 0
+                f.write(f"\nWord Overlap Similarity: {similarity:.1f}%\n")
+                
+                if similarity >= 90:
+                    f.write("Status: ✅ EXCELLENT - Minimal context loss\n")
+                elif similarity >= 80:
+                    f.write("Status: ✅ GOOD - Minor differences, likely acceptable\n")
+                elif similarity >= 70:
+                    f.write("Status: ⚠️ MODERATE - Some context loss detected\n")
+                else:
+                    f.write("Status: ❌ SIGNIFICANT - Context loss may affect meaning\n")
+                
+                f.write("\n")
+            
+            f.write("=" * 80 + "\n")
+            f.write("INTERPRETATION GUIDE\n")
+            f.write("=" * 80 + "\n")
+            f.write("""
+- 90%+ similarity: Chunk-by-chunk is working well
+- 80-90% similarity: Minor variations, usually acceptable
+- 70-80% similarity: Consider enabling/tuning context-aware translation
+- <70% similarity: Significant context loss, review needed
+
+Common causes of low similarity:
+1. Pronoun resolution (he/she/it translated differently)
+2. Theological term consistency (same word translated differently)
+3. Sentence flow and connectors
+4. Gender/number agreement across chunks
+
+If similarity is low, review the specific differences above to determine
+if they affect theological meaning.
+""")
+        
+        print(f"   Context comparison saved: {comparison_filename}")
+        return comparison_filename
+    
+    def _save_glossary_report(self, base_filename: str):
+        """Save glossary corrections report (Mode 13 - Option B)
+        
+        Args:
+            base_filename: Base filename (without extension) for the report
+        """
+        if not self.glossary_corrections_log:
+            print("   No glossary corrections were made")
+            return None
+        
+        report_filename = f"{base_filename}_glossary_corrections.txt"
+        
+        # Count total corrections
+        total_corrections = sum(
+            len(entry['corrections'].get(lang, []))
+            for entry in self.glossary_corrections_log
+            for lang in entry['corrections']
+        )
+        
+        with open(report_filename, 'w', encoding='utf-8') as f:
+            f.write("=" * 80 + "\n")
+            f.write("GLOSSARY CORRECTIONS REPORT (Mode 13 - Option B)\n")
+            f.write("=" * 80 + "\n\n")
+            
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total Segments with Corrections: {len(self.glossary_corrections_log)}\n")
+            f.write(f"Total Corrections Made: {total_corrections}\n")
+            f.write(f"Glossary Size: {len(THEOLOGICAL_GLOSSARY)} terms\n\n")
+            
+            f.write("=" * 80 + "\n")
+            f.write("CORRECTION DETAILS\n")
+            f.write("=" * 80 + "\n\n")
+            
+            for entry in self.glossary_corrections_log:
+                f.write(f"--- [{entry['timestamp'].split('T')[1][:8]}] ---\n")
+                f.write(f"Source: {entry['source_text'][:80]}...\n")
+                
+                for lang_name, corrections in entry['corrections'].items():
+                    for corr in corrections:
+                        f.write(f"  {lang_name}: '{corr['original']}' → '{corr['corrected']}' (PT: {corr['portuguese']})\n")
+                f.write("\n")
+            
+            # Summary by term
+            f.write("=" * 80 + "\n")
+            f.write("CORRECTION FREQUENCY BY TERM\n")
+            f.write("=" * 80 + "\n\n")
+            
+            term_counts = {}
+            for entry in self.glossary_corrections_log:
+                for lang_name, corrections in entry['corrections'].items():
+                    for corr in corrections:
+                        key = f"{corr['original']} → {corr['corrected']}"
+                        term_counts[key] = term_counts.get(key, 0) + 1
+            
+            for term, count in sorted(term_counts.items(), key=lambda x: -x[1]):
+                f.write(f"  {count:3d}x  {term}\n")
+        
+        print(f"   Glossary corrections saved: {report_filename}")
+        return report_filename
+    
+    def _save_context_differences_report(self, base_filename: str):
+        """Save async context differences report (Mode 13 - Option A)
+        
+        Args:
+            base_filename: Base filename (without extension) for the report
+        """
+        if not self.async_context_differences:
+            print("   No significant context differences found")
+            return None
+        
+        report_filename = f"{base_filename}_context_differences.txt"
+        
+        # Count by severity
+        high_count = sum(1 for d in self.async_context_differences 
+                        for lang_diff in d['differences'].values() 
+                        if lang_diff.get('severity') == 'HIGH')
+        medium_count = sum(1 for d in self.async_context_differences 
+                          for lang_diff in d['differences'].values() 
+                          if lang_diff.get('severity') == 'MEDIUM')
+        low_count = sum(1 for d in self.async_context_differences 
+                       for lang_diff in d['differences'].values() 
+                       if lang_diff.get('severity') == 'LOW')
+        
+        with open(report_filename, 'w', encoding='utf-8') as f:
+            f.write("=" * 80 + "\n")
+            f.write("CONTEXT DIFFERENCES REPORT (Mode 13 - Option A)\n")
+            f.write("Async Context Comparison Results\n")
+            f.write("=" * 80 + "\n\n")
+            
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total Segments with Differences: {len(self.async_context_differences)}\n")
+            f.write(f"Severity Breakdown:\n")
+            f.write(f"  🔴 HIGH (pronoun changes): {high_count}\n")
+            f.write(f"  🟡 MEDIUM (>30% different): {medium_count}\n")
+            f.write(f"  🟢 LOW (15-30% different): {low_count}\n\n")
+            
+            # Show HIGH severity first
+            f.write("=" * 80 + "\n")
+            f.write("🔴 HIGH SEVERITY - Pronoun/Meaning Changes (Review Recommended)\n")
+            f.write("=" * 80 + "\n\n")
+            
+            high_items = [d for d in self.async_context_differences 
+                         if any(diff.get('severity') == 'HIGH' for diff in d['differences'].values())]
+            
+            if high_items:
+                for item in high_items:
+                    f.write(f"--- Segment {item['segment_id']} [{item['timestamp'].split('T')[1][:8]}] ---\n")
+                    f.write(f"Source: {item['source_text']}\n")
+                    if item.get('context'):
+                        f.write(f"Context: {item['context']}\n")
+                    
+                    for lang_name, diff in item['differences'].items():
+                        if diff.get('severity') == 'HIGH':
+                            f.write(f"\n  {lang_name}:\n")
+                            f.write(f"    Fast:    {diff['fast_translation']}\n")
+                            f.write(f"    Context: {diff['context_translation']}\n")
+                            if diff.get('pronoun_details'):
+                                f.write(f"    Pronoun: {', '.join(diff['pronoun_details'])}\n")
+                    f.write("\n")
+            else:
+                f.write("  None found - Good!\n\n")
+            
+            # Show MEDIUM severity
+            f.write("=" * 80 + "\n")
+            f.write("🟡 MEDIUM SEVERITY - Significant Differences\n")
+            f.write("=" * 80 + "\n\n")
+            
+            medium_items = [d for d in self.async_context_differences 
+                          if any(diff.get('severity') == 'MEDIUM' for diff in d['differences'].values())]
+            
+            if medium_items:
+                for item in medium_items[:20]:  # Limit to first 20
+                    f.write(f"--- Segment {item['segment_id']} ---\n")
+                    f.write(f"Source: {item['source_text'][:60]}...\n")
+                    for lang_name, diff in item['differences'].items():
+                        if diff.get('severity') == 'MEDIUM':
+                            f.write(f"  Difference: {diff['difference_ratio']*100:.0f}%\n")
+                    f.write("\n")
+                if len(medium_items) > 20:
+                    f.write(f"  ... and {len(medium_items) - 20} more\n\n")
+            else:
+                f.write("  None found\n\n")
+            
+            # Summary
+            f.write("=" * 80 + "\n")
+            f.write("INTERPRETATION\n")
+            f.write("=" * 80 + "\n")
+            f.write("""
+HIGH severity items indicate pronoun differences (he/she/it/him/her) between
+fast translation and context-aware translation. These may affect theological
+meaning and should be reviewed by a bilingual person.
+
+MEDIUM severity items have >30% word differences, which may indicate:
+- Different sentence structure
+- Alternative word choices
+- Missing or added connectors
+
+LOW severity items have 15-30% differences, usually acceptable variations.
+
+If you see many HIGH severity items, consider:
+1. Building a specialized glossary for problematic terms
+2. Reviewing source audio for clarity
+3. Checking if specific phrases consistently cause issues
+""")
+        
+        print(f"   Context differences saved: {report_filename}")
+        return report_filename
     
     def split_text_into_chunks(self, text: str, max_words: int = 40, min_words: int = 15) -> List[str]:
         """
@@ -2633,6 +3468,10 @@ Chunk Splitting: {'Enabled (threshold: ' + str(chunk_threshold) + ' words)' if c
 Fast Recognition: {fast_recog_str}
 Voice Activity Timeout: {voice_timeout_str}
 Early Interim Display: {early_interim_str}
+Context-Aware Translation: {'Enabled (using ' + str(self.test_config.get('context_chunks', 1)) + ' previous chunk(s))' if self.test_config.get('context_aware_translation') else 'Disabled'}
+Translation Logging: {'Enabled' if self.test_config.get('save_translation_log') else 'Disabled'}
+Glossary Lookup: {'Enabled (' + str(len(THEOLOGICAL_GLOSSARY)) + ' terms)' if self.test_config.get('use_glossary') else 'Disabled'}
+Async Context Comparison: {'Enabled' if self.test_config.get('async_context_comparison') else 'Disabled'}
 
 STREAMING STATISTICS
 --------------------
@@ -2711,6 +3550,33 @@ Average Queue Wait ({avg_queue_wait:.2f}s) vs Drain Time ({queue_drain_str}):
         # Print to console
         print(summary)
         print(f"\nSummary saved to: {summary_filename}")
+        
+        # Save translation log and run context comparison if enabled
+        base_filename = summary_filename.replace('_summary.txt', '')
+        
+        if self.test_config.get('save_translation_log', False):
+            print("\n📝 Saving translation log...")
+            self._save_translation_log(base_filename)
+        
+        if self.test_config.get('run_context_comparison', False):
+            print("\n🔍 Running context comparison diagnostic...")
+            self._run_context_comparison(base_filename)
+        
+        # Mode 13: Save glossary corrections report
+        if self.test_config.get('generate_glossary_report', False):
+            print("\n📖 Saving glossary corrections report...")
+            self._save_glossary_report(base_filename)
+        
+        # Mode 13: Save async context differences report
+        if self.test_config.get('generate_difference_report', False):
+            print("\n🔄 Saving context differences report...")
+            self._save_context_differences_report(base_filename)
+        
+        # Stop async worker if running
+        if hasattr(self, 'async_worker_running') and self.async_worker_running:
+            self.async_worker_running = False
+            if self.async_worker_thread:
+                self.async_worker_thread.join(timeout=2.0)
 
 
 # =============================================================================
@@ -2747,6 +3613,10 @@ def select_test_mode():
             print(f"     VOICE TIMEOUT: speech_end={config.get('speech_end_timeout_sec')}s (forces faster finalization)")
         if config.get('early_interim_display'):
             print(f"     EARLY INTERIM: Display after {config.get('early_interim_word_threshold')} words (don't wait for FINAL)")
+        if config.get('use_glossary'):
+            print(f"     GLOSSARY: {len(THEOLOGICAL_GLOSSARY)} theological terms for consistency")
+        if config.get('async_context_comparison'):
+            print(f"     ASYNC CONTEXT: Background comparison for quality analysis")
     
     print("\n" + "-"*70)
     print("  L. View last test results")
@@ -2755,7 +3625,7 @@ def select_test_mode():
     print("-"*70)
     
     while True:
-        choice = input("\nEnter choice (0-12, L, C, Q): ").strip().upper()
+        choice = input("\nEnter choice (0-13, L, C, Q): ").strip().upper()
         
         if choice == 'Q':
             print("Exiting...")
@@ -2766,7 +3636,7 @@ def select_test_mode():
         elif choice == 'C':
             compare_all_results()
             return select_test_mode()  # Return to menu
-        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']:
+        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']:
             return int(choice)
         else:
             print("Invalid choice. Try again.")
