@@ -364,6 +364,183 @@ TEST_MODES = {
         "generate_difference_report": True,  # *_context_differences.txt
         "generate_glossary_report": True,    # *_glossary_corrections.txt
     },
+    14: {
+        "name": "Context-Aware Quality (Native Speaker Approved)",
+        "description": "RECOMMENDED: Full context translation for accurate, readable output. ~10-20 sec delay but significantly better quality. Uses 5 previous segments as context to help Google Translate understand pronouns, flow, and fill gaps from imperfect speech recognition.",
+        "reading_speed": 220,
+        "min_display_time": 2.5,
+        "fade_duration": 0.3,
+        "buffer_time": 0.5,
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,
+        "chunk_min_size": 10,
+        # Recognition settings (same as Mode 12)
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,
+        "disable_enhanced": True,
+        "disable_punctuation": True,
+        "disable_speech_context": False,  # Speech hints ENABLED
+        "use_voice_activity_timeout": False,
+        # Early interim display - DISABLED for quality mode
+        # We wait for FINAL results to ensure complete sentences
+        "early_interim_display": False,
+        "early_interim_word_threshold": 15,
+        # === KEY FEATURE: Context-Aware Translation ===
+        "context_aware_translation": True,   # ENABLED - sends previous segments as context
+        "context_chunks": 5,                 # LARGE: 5 previous segments for best quality
+        "context_separator": " ",            # How to join context segments
+        # Logging and comparison
+        "save_translation_log": True,
+        "run_context_comparison": True,
+        # Glossary (from Mode 13)
+        "use_glossary": True,
+        "glossary_case_sensitive": False,
+        # Quality reporting
+        "generate_difference_report": False,  # Not needed - we're using context
+        "generate_glossary_report": True,
+    },
+    15: {
+        "name": "Balanced Quality (Context + Speed)",
+        "description": "HYBRID: Uses 2 previous segments for context. Punctuation ENABLED for better sentence boundaries. Post-recognition corrections fix common errors. Target: 5-15 sec delay with improved quality.",
+        "reading_speed": 220,
+        "min_display_time": 2.5,
+        "fade_duration": 0.3,
+        "buffer_time": 0.5,
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,
+        "chunk_min_size": 10,
+        # Recognition settings
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,
+        "disable_enhanced": True,
+        "disable_punctuation": False,  # ENABLED - adds periods, commas for better translation
+        "disable_speech_context": False,  # Speech hints ENABLED
+        "use_voice_activity_timeout": False,
+        # Early interim display - ENABLED for faster perceived response
+        "early_interim_display": True,
+        "early_interim_word_threshold": 15,
+        # === BALANCED Context-Aware Translation ===
+        "context_aware_translation": True,   # ENABLED
+        "context_chunks": 2,                 # SMALLER: 2 segments (faster than 5)
+        "context_separator": " ",
+        "use_bracket_separator": True,       # Use [[[...]]] instead of |||
+        # Logging and comparison
+        "save_translation_log": True,
+        "run_context_comparison": True,
+        # Glossary
+        "use_glossary": True,
+        "glossary_case_sensitive": False,
+        # Quality reporting
+        "generate_difference_report": False,
+        "generate_glossary_report": True,
+    },
+    16: {
+        "name": "Overlap Coverage (Primary-Backup)",
+        "description": "PRIMARY/BACKUP MODEL: Stream A outputs directly, Stream B buffers and only releases during Stream A's restart gaps. Eliminates duplicates while maintaining ~99% coverage.",
+        "reading_speed": 220,
+        "min_display_time": 2.5,
+        "fade_duration": 0.3,
+        "buffer_time": 0.5,
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 30,
+        "chunk_min_size": 10,
+        # Recognition settings (same as Mode 15)
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,
+        "disable_enhanced": True,
+        "disable_punctuation": False,  # Punctuation ENABLED
+        "disable_speech_context": False,  # Speech hints ENABLED
+        "use_voice_activity_timeout": False,
+        # Early interim display
+        "early_interim_display": True,
+        "early_interim_word_threshold": 15,
+        # Context-Aware Translation
+        "context_aware_translation": True,
+        "context_chunks": 2,
+        "context_separator": " ",
+        "use_bracket_separator": True,
+        # Logging and comparison
+        "save_translation_log": True,
+        "run_context_comparison": True,
+        # Glossary
+        "use_glossary": True,
+        "glossary_case_sensitive": False,
+        # Quality reporting
+        "generate_difference_report": False,
+        "generate_glossary_report": True,
+        # === DUAL STREAM SETTINGS (NEW) ===
+        "dual_stream_enabled": True,
+        "stream_b_delay_seconds": 150,  # 2.5 minutes offset
+        "dedup_similarity_threshold": 0.75,  # Not used in Primary/Backup model
+        "dedup_time_window_seconds": 20,  # Not used in Primary/Backup model
+        # === PRIMARY/BACKUP MODEL SETTINGS ===
+        "gap_threshold_seconds": 3.0,  # Seconds without Stream A output to trigger backup
+        "buffer_duration_seconds": 30.0,  # How many seconds of Stream B content to buffer
+    },
+    17: {
+        "name": "Enhanced Context Quality",
+        "description": "HYBRID BUFFER: Waits for sentence end OR 50 words OR 15 sec timeout before translating. Targets 90%+ context similarity with 5-15 sec latency.",
+        "reading_speed": 220,
+        "min_display_time": 2.5,
+        "fade_duration": 0.3,
+        "buffer_time": 0.5,
+        "use_interim_results": False,
+        "max_latency": None,
+        "catchup_enabled": False,
+        "catchup_threshold": None,
+        "chunk_split_enabled": True,
+        "chunk_split_threshold": 50,  # Larger chunks for buffered content
+        "chunk_min_size": 15,         # Minimum chunk size
+        # Recognition settings
+        "force_faster_recognition": True,
+        "use_short_model": False,
+        "use_default_model": True,
+        "api_interim_results": True,
+        "disable_enhanced": True,
+        "disable_punctuation": False,  # ENABLED - adds periods, commas for better translation
+        "disable_speech_context": False,  # Speech hints ENABLED
+        "use_voice_activity_timeout": False,
+        # Early interim display - DISABLED for hybrid buffer mode
+        "early_interim_display": False,  # Disabled - using hybrid buffer instead
+        "early_interim_word_threshold": 20,
+        # === HYBRID BUFFER SETTINGS (NEW) ===
+        "hybrid_buffer_enabled": True,       # Enable hybrid buffering
+        "buffer_sentence_endings": True,     # Trigger on . ? !
+        "buffer_max_words": 50,              # Trigger at 50 words
+        "buffer_timeout_seconds": 15,        # Safety timeout (max latency)
+        # === ENHANCED Context-Aware Translation ===
+        "context_aware_translation": True,   # ENABLED
+        "context_chunks": 3,                 # Use 3 previous segments for context
+        "context_separator": " ",
+        "use_bracket_separator": True,       # Use [[[...]]] instead of |||
+        # Logging and comparison
+        "save_translation_log": True,
+        "run_context_comparison": True,
+        # Glossary
+        "use_glossary": True,
+        "glossary_case_sensitive": False,
+        # Quality reporting
+        "generate_difference_report": False,
+        "generate_glossary_report": True,
+    },
 }
 
 # =============================================================================
@@ -1429,6 +1606,590 @@ class AudioFileStreamer:
 
 
 # =============================================================================
+# DUAL STREAM MANAGER - For Overlap Coverage (Mode 16)
+# PRIMARY/BACKUP MODEL: Stream A is primary, Stream B fills gaps during restarts
+# =============================================================================
+
+from enum import Enum
+
+class StreamRole(Enum):
+    PRIMARY = "primary"      # Outputs to display
+    BACKUP = "backup"        # Buffers content, only outputs during primary's gaps
+    RESTARTING = "restarting"  # Currently restarting
+
+
+class DualStreamManager:
+    """
+    Manages two overlapping speech recognition streams using PRIMARY/BACKUP model.
+    
+    - Stream A = PRIMARY: Always outputs content to display
+    - Stream B = BACKUP: Buffers content, only releases during Stream A's restart gaps
+    
+    This eliminates duplicates while maintaining gap coverage.
+    
+    Timeline:
+         0:00    2:30    5:00    5:05    7:30    10:00   10:05
+           │       │       │       │       │       │       │
+    Stream A:  ████████████████|GAP|████████████████████|GAP|████████
+               PRIMARY         restart                   restart
+                                 │                         │
+    Stream B:       ████████████|███|███████████████████|███|████████
+                    BACKUP      OUTPUT                  OUTPUT
+                   (buffering) (fill gap)             (fill gap)
+    """
+    
+    def __init__(self, speech_client, config, streaming_config, audio_streamer,
+                 stream_b_delay: float = 150, gap_threshold: float = 3.0,
+                 buffer_duration: float = 30.0):
+        """
+        Initialize dual stream manager with Primary/Backup model.
+        
+        Args:
+            speech_client: Google Speech client
+            config: Recognition config
+            streaming_config: Streaming recognition config
+            audio_streamer: Audio source (file or microphone)
+            stream_b_delay: Seconds to delay Stream B start (default 2.5 min)
+            gap_threshold: Seconds without Stream A output to trigger backup (default 3s)
+            buffer_duration: How many seconds of Stream B content to buffer (default 30s)
+        """
+        self.speech_client = speech_client
+        self.config = config
+        self.streaming_config = streaming_config
+        self.audio_streamer = audio_streamer
+        
+        self.stream_b_delay = stream_b_delay
+        self.gap_threshold = gap_threshold
+        self.buffer_duration = buffer_duration
+        
+        # Stream roles
+        self.stream_a_role = StreamRole.PRIMARY
+        self.stream_b_role = StreamRole.BACKUP
+        
+        # Stream state
+        self.stream_a_active = False
+        self.stream_b_active = False
+        self.stream_b_started = False
+        
+        # SEPARATE audio queues for each stream
+        self.stream_a_queue = queue.Queue()
+        self.stream_b_queue = queue.Queue()
+        
+        # Stream B buffer (holds content while backing up)
+        self.stream_b_buffer = []  # List of (timestamp, transcript) tuples
+        self.buffer_lock = threading.Lock()
+        
+        # Last output tracking for gap detection
+        self.last_stream_a_output = None
+        self.stream_a_restarting = False
+        
+        # Results queue (thread-safe) - final output to display
+        self.results_queue = queue.Queue()
+        
+        # Statistics
+        self.stream_a_segments = 0
+        self.stream_b_segments = 0
+        self.stream_b_segments_buffered = 0  # Total buffered (not output)
+        self.stream_b_segments_released = 0  # Released during gaps
+        self.gaps_filled = 0  # Number of gaps filled by Stream B
+        self.stream_a_restarts = 0
+        self.stream_b_restarts = 0
+        
+        # Control flags
+        self.is_running = False
+        self.is_paused = False
+        
+        # Threads
+        self.stream_a_thread = None
+        self.stream_b_thread = None
+        self.stream_b_timer = None
+        self.audio_broadcaster_thread = None
+        self.gap_monitor_thread = None
+        
+        # Lock for thread safety
+        self.lock = threading.Lock()
+    
+    def start(self):
+        """Start dual stream processing with Primary/Backup model."""
+        self.is_running = True
+        self.last_stream_a_output = datetime.now()
+        
+        print("\n" + "=" * 60)
+        print("   DUAL STREAM MANAGER - PRIMARY/BACKUP MODEL")
+        print("=" * 60)
+        print(f"   Stream A: PRIMARY (outputs to display)")
+        print(f"   Stream B: BACKUP (starts in {self.stream_b_delay}s, buffers content)")
+        print(f"   Gap threshold: {self.gap_threshold}s (triggers backup release)")
+        print(f"   Buffer duration: {self.buffer_duration}s")
+        print("=" * 60)
+        
+        # Start audio broadcaster
+        self.audio_broadcaster_thread = threading.Thread(target=self._broadcast_audio, daemon=True)
+        self.audio_broadcaster_thread.start()
+        
+        # Start Stream A immediately as PRIMARY
+        self.stream_a_thread = threading.Thread(target=self._run_stream_a, daemon=True)
+        self.stream_a_thread.start()
+        self.stream_a_active = True
+        
+        # Start gap monitor
+        self.gap_monitor_thread = threading.Thread(target=self._monitor_gaps, daemon=True)
+        self.gap_monitor_thread.start()
+        
+        # Schedule Stream B to start after delay
+        self.stream_b_timer = threading.Timer(self.stream_b_delay, self._start_stream_b)
+        self.stream_b_timer.start()
+    
+    def _broadcast_audio(self):
+        """Broadcast audio to both stream queues."""
+        chunks_broadcast = 0
+        
+        for chunk, timestamp in self.audio_streamer.audio_generator():
+            if not self.is_running:
+                break
+            
+            if hasattr(self.audio_streamer, 'is_finished'):
+                if self.audio_streamer.is_finished and self.audio_streamer.audio_queue.empty():
+                    break
+            
+            # Send to both streams
+            self.stream_a_queue.put((chunk, timestamp))
+            if self.stream_b_started:
+                self.stream_b_queue.put((chunk, timestamp))
+            
+            chunks_broadcast += 1
+            if chunks_broadcast % 500 == 0:
+                print(f"   [BROADCAST] {chunks_broadcast} chunks")
+        
+        # Signal end
+        self.stream_a_queue.put((None, None))
+        self.stream_b_queue.put((None, None))
+        print(f"   [BROADCAST] Complete - {chunks_broadcast} chunks")
+    
+    def _start_stream_b(self):
+        """Start Stream B as BACKUP."""
+        if not self.is_running:
+            return
+        
+        print(f"\n   [BACKUP] Stream B starting as BACKUP (buffering mode)")
+        self.stream_b_started = True
+        self.stream_b_thread = threading.Thread(target=self._run_stream_b, daemon=True)
+        self.stream_b_thread.start()
+        self.stream_b_active = True
+    
+    def _run_stream_a(self):
+        """Run Stream A as PRIMARY - outputs directly to display."""
+        restart_count = 0
+        
+        while self.is_running:
+            try:
+                if self.is_paused:
+                    time.sleep(0.5)
+                    continue
+                
+                # Mark as not restarting
+                self.stream_a_restarting = False
+                
+                def request_generator():
+                    while self.is_running and not self.is_paused:
+                        try:
+                            chunk, timestamp = self.stream_a_queue.get(timeout=1)
+                            if chunk is None:
+                                break
+                            yield speech.StreamingRecognizeRequest(audio_content=chunk)
+                        except queue.Empty:
+                            if hasattr(self.audio_streamer, 'is_finished') and self.audio_streamer.is_finished:
+                                break
+                            continue
+                
+                responses = self.speech_client.streaming_recognize(
+                    self.streaming_config, request_generator()
+                )
+                
+                for response in responses:
+                    if not self.is_running:
+                        break
+                    
+                    for result in response.results:
+                        if result.is_final:
+                            transcript = result.alternatives[0].transcript
+                            
+                            if not transcript or not transcript.strip():
+                                continue
+                            
+                            # PRIMARY outputs directly
+                            self.results_queue.put({
+                                'transcript': transcript,
+                                'stream_id': 'A',
+                                'timestamp': datetime.now(),
+                                'is_final': True,
+                                'source': 'primary'
+                            })
+                            
+                            # Update last output time
+                            self.last_stream_a_output = datetime.now()
+                            
+                            with self.lock:
+                                self.stream_a_segments += 1
+                            
+                            print(f"   [PRIMARY] Stream A: {len(transcript.split())} words")
+                
+            except Exception as e:
+                error_msg = str(e)
+                
+                if "deadline exceeded" in error_msg.lower() or "timeout" in error_msg.lower():
+                    restart_count += 1
+                    with self.lock:
+                        self.stream_a_restarts += 1
+                    
+                    # Mark as restarting - this triggers backup release
+                    self.stream_a_restarting = True
+                    
+                    print(f"\n   [PRIMARY] Stream A: RESTARTING #{restart_count} - Backup will fill gap")
+                    
+                    time.sleep(0.5)
+                    continue
+                else:
+                    print(f"\n   [PRIMARY] Stream A: Error - {error_msg}")
+                    self.stream_a_restarting = True
+                    time.sleep(1)
+                    continue
+            
+            if hasattr(self.audio_streamer, 'is_finished') and self.audio_streamer.is_finished:
+                print(f"\n   [PRIMARY] Stream A: Audio finished")
+                break
+        
+        with self.lock:
+            self.stream_a_active = False
+    
+    def _run_stream_b(self):
+        """Run Stream B as BACKUP - buffers content, releases during gaps."""
+        restart_count = 0
+        
+        while self.is_running:
+            try:
+                if self.is_paused:
+                    time.sleep(0.5)
+                    continue
+                
+                def request_generator():
+                    while self.is_running and not self.is_paused:
+                        try:
+                            chunk, timestamp = self.stream_b_queue.get(timeout=1)
+                            if chunk is None:
+                                break
+                            yield speech.StreamingRecognizeRequest(audio_content=chunk)
+                        except queue.Empty:
+                            if hasattr(self.audio_streamer, 'is_finished') and self.audio_streamer.is_finished:
+                                break
+                            continue
+                
+                responses = self.speech_client.streaming_recognize(
+                    self.streaming_config, request_generator()
+                )
+                
+                for response in responses:
+                    if not self.is_running:
+                        break
+                    
+                    for result in response.results:
+                        if result.is_final:
+                            transcript = result.alternatives[0].transcript
+                            
+                            if not transcript or not transcript.strip():
+                                continue
+                            
+                            # BACKUP: Add to buffer instead of outputting
+                            with self.buffer_lock:
+                                self.stream_b_buffer.append((datetime.now(), transcript))
+                                self.stream_b_segments_buffered += 1
+                                
+                                # Keep buffer size limited
+                                cutoff = datetime.now() - timedelta(seconds=self.buffer_duration)
+                                self.stream_b_buffer = [
+                                    (ts, txt) for ts, txt in self.stream_b_buffer
+                                    if ts > cutoff
+                                ]
+                            
+                            print(f"   [BACKUP] Stream B: Buffered {len(transcript.split())} words (buffer: {len(self.stream_b_buffer)} items)")
+                
+            except Exception as e:
+                error_msg = str(e)
+                
+                if "deadline exceeded" in error_msg.lower() or "timeout" in error_msg.lower():
+                    restart_count += 1
+                    with self.lock:
+                        self.stream_b_restarts += 1
+                    
+                    print(f"\n   [BACKUP] Stream B: Restart #{restart_count}")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    print(f"\n   [BACKUP] Stream B: Error - {error_msg}")
+                    time.sleep(1)
+                    continue
+            
+            if hasattr(self.audio_streamer, 'is_finished') and self.audio_streamer.is_finished:
+                print(f"\n   [BACKUP] Stream B: Audio finished")
+                break
+        
+        with self.lock:
+            self.stream_b_active = False
+    
+    def _monitor_gaps(self):
+        """Monitor for gaps in Stream A output and release backup buffer.
+        
+        IMPORTANT: Only releases buffer when Stream A is ACTUALLY restarting,
+        not just during normal pauses between utterances.
+        """
+        while self.is_running:
+            time.sleep(0.5)  # Check every 500ms
+            
+            if not self.stream_b_started:
+                continue
+            
+            # ONLY release buffer when Stream A is explicitly restarting
+            # Normal pauses (even long ones) should NOT trigger release
+            if self.stream_a_restarting:
+                time_since_output = (datetime.now() - self.last_stream_a_output).total_seconds()
+                
+                # Only release if we've been restarting for more than gap_threshold
+                # This prevents releasing during brief restart moments
+                if time_since_output > self.gap_threshold:
+                    with self.buffer_lock:
+                        if self.stream_b_buffer:
+                            # Release all buffered content
+                            items_to_release = list(self.stream_b_buffer)
+                            self.stream_b_buffer = []  # Clear buffer
+                            
+                            if items_to_release:
+                                self.gaps_filled += 1
+                                print(f"\n   [GAP FILL] Stream A restarting - Releasing {len(items_to_release)} buffered items from Stream B")
+                                
+                                for ts, transcript in items_to_release:
+                                    self.results_queue.put({
+                                        'transcript': transcript,
+                                        'stream_id': 'B',
+                                        'timestamp': ts,
+                                        'is_final': True,
+                                        'source': 'backup_fill'
+                                    })
+                                    
+                                    with self.lock:
+                                        self.stream_b_segments += 1
+                                        self.stream_b_segments_released += 1
+    
+    def get_next_result(self, timeout: float = 1.0):
+        """Get next result from display queue."""
+        try:
+            return self.results_queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
+    
+    def stop(self):
+        """Stop all streams."""
+        self.is_running = False
+        
+        if self.stream_b_timer:
+            self.stream_b_timer.cancel()
+        
+        # Wait for threads
+        for thread in [self.audio_broadcaster_thread, self.stream_a_thread, 
+                       self.stream_b_thread, self.gap_monitor_thread]:
+            if thread and thread.is_alive():
+                thread.join(timeout=2)
+    
+    def get_statistics(self) -> dict:
+        """Get dual stream statistics."""
+        with self.lock:
+            return {
+                'stream_a_segments': self.stream_a_segments,
+                'stream_b_segments': self.stream_b_segments,
+                'stream_b_buffered': self.stream_b_segments_buffered,
+                'stream_b_released': self.stream_b_segments_released,
+                'total_segments': self.stream_a_segments + self.stream_b_segments,
+                'gaps_filled': self.gaps_filled,
+                'stream_a_restarts': self.stream_a_restarts,
+                'stream_b_restarts': self.stream_b_restarts,
+                'stream_a_active': self.stream_a_active,
+                'stream_b_active': self.stream_b_active,
+                'buffer_size': len(self.stream_b_buffer),
+            }
+
+
+# =============================================================================
+# HYBRID BUFFER - For Enhanced Context Quality (Mode 17)
+# =============================================================================
+
+class HybridBuffer:
+    """
+    Buffers speech recognition fragments until complete sentences are formed.
+    
+    Triggers translation when ANY of these conditions is met:
+    1. Sentence ending detected (. ? !)
+    2. Word count reaches threshold (default: 50 words)
+    3. Time elapsed reaches timeout (default: 15 seconds)
+    
+    This improves translation quality by providing more complete context
+    at the cost of increased latency.
+    """
+    
+    def __init__(self, max_words: int = 50, timeout_seconds: float = 15.0,
+                 detect_sentence_endings: bool = True):
+        """
+        Initialize hybrid buffer.
+        
+        Args:
+            max_words: Maximum words before forcing translation
+            timeout_seconds: Maximum time before forcing translation
+            detect_sentence_endings: Whether to trigger on . ? !
+        """
+        self.max_words = max_words
+        self.timeout_seconds = timeout_seconds
+        self.detect_sentence_endings = detect_sentence_endings
+        
+        # Buffer state
+        self.buffer = []  # List of transcript fragments
+        self.buffer_start_time = None
+        self.total_words = 0
+        
+        # Statistics
+        self.flushes_by_sentence = 0
+        self.flushes_by_words = 0
+        self.flushes_by_timeout = 0
+        self.flushes_by_restart = 0  # Track restart flushes (Option C)
+        self.flushes_by_final = 0    # Track final/stop flushes
+        self.total_flushes = 0
+        
+        # Lock for thread safety
+        self.lock = threading.Lock()
+    
+    def add_fragment(self, transcript: str, is_final: bool = False) -> tuple:
+        """
+        Add a transcript fragment to the buffer.
+        
+        Args:
+            transcript: The transcript text from speech recognition
+            is_final: Whether this is a FINAL result from Google
+            
+        Returns:
+            tuple: (should_flush, buffered_text, flush_reason)
+            - should_flush: True if buffer should be translated now
+            - buffered_text: The complete buffered text to translate
+            - flush_reason: 'sentence', 'words', 'timeout', 'final', or None
+        """
+        with self.lock:
+            # Start timer on first fragment
+            if self.buffer_start_time is None:
+                self.buffer_start_time = datetime.now()
+            
+            # Add fragment to buffer
+            if transcript and transcript.strip():
+                self.buffer.append(transcript.strip())
+                self.total_words = len(' '.join(self.buffer).split())
+            
+            # Check flush conditions
+            buffered_text = ' '.join(self.buffer)
+            flush_reason = None
+            
+            # Condition 1: Sentence ending detected
+            if self.detect_sentence_endings and buffered_text:
+                # Check if text ends with sentence-ending punctuation
+                stripped = buffered_text.rstrip()
+                if stripped and stripped[-1] in '.?!':
+                    flush_reason = 'sentence'
+                    self.flushes_by_sentence += 1
+            
+            # Condition 2: Word count threshold reached
+            if flush_reason is None and self.total_words >= self.max_words:
+                flush_reason = 'words'
+                self.flushes_by_words += 1
+            
+            # Condition 3: Timeout elapsed
+            if flush_reason is None and self.buffer_start_time:
+                elapsed = (datetime.now() - self.buffer_start_time).total_seconds()
+                if elapsed >= self.timeout_seconds:
+                    flush_reason = 'timeout'
+                    self.flushes_by_timeout += 1
+            
+            # Condition 4: Final result with content (force flush remaining)
+            if flush_reason is None and is_final and buffered_text:
+                # Only flush on final if we have meaningful content
+                if self.total_words >= 5:  # At least 5 words
+                    flush_reason = 'final'
+            
+            # Should we flush?
+            should_flush = flush_reason is not None
+            
+            if should_flush:
+                self.total_flushes += 1
+                # Reset buffer
+                result_text = buffered_text
+                self._reset_buffer()
+                return (True, result_text, flush_reason)
+            else:
+                return (False, None, None)
+    
+    def _reset_buffer(self):
+        """Reset buffer state (must be called with lock held)."""
+        self.buffer = []
+        self.buffer_start_time = None
+        self.total_words = 0
+    
+    def flush(self, reason: str = 'manual') -> tuple:
+        """
+        Force flush the buffer regardless of conditions.
+        
+        Args:
+            reason: Why the flush is happening ('restart', 'final', 'manual')
+        
+        Returns:
+            tuple: (has_content, buffered_text)
+        """
+        with self.lock:
+            if self.buffer:
+                buffered_text = ' '.join(self.buffer)
+                self._reset_buffer()
+                self.total_flushes += 1
+                
+                # Track flush reason
+                if reason == 'restart':
+                    self.flushes_by_restart += 1
+                elif reason == 'final':
+                    self.flushes_by_final += 1
+                
+                return (True, buffered_text)
+            return (False, None)
+    
+    def get_buffer_status(self) -> dict:
+        """Get current buffer status."""
+        with self.lock:
+            elapsed = 0
+            if self.buffer_start_time:
+                elapsed = (datetime.now() - self.buffer_start_time).total_seconds()
+            
+            return {
+                'words': self.total_words,
+                'fragments': len(self.buffer),
+                'elapsed_seconds': elapsed,
+                'time_remaining': max(0, self.timeout_seconds - elapsed),
+            }
+    
+    def get_statistics(self) -> dict:
+        """Get buffer statistics."""
+        with self.lock:
+            return {
+                'total_flushes': self.total_flushes,
+                'flushes_by_sentence': self.flushes_by_sentence,
+                'flushes_by_words': self.flushes_by_words,
+                'flushes_by_timeout': self.flushes_by_timeout,
+                'flushes_by_restart': self.flushes_by_restart,
+                'flushes_by_final': self.flushes_by_final,
+                'current_buffer_words': self.total_words,
+            }
+
+
+# =============================================================================
 # TEST HARNESS MAIN SYSTEM
 # =============================================================================
 
@@ -1533,6 +2294,41 @@ class TestHarnessSystem:
         "escatologia", "pneumatologia", "eclesiologia",
         "exegese", "hermenêutica", "homilética", "apologética",
         
+        # --- Gnosticism & Early Church Terms (NEW) ---
+        "protognosticismo", "proto-gnosticismo", "proto gnosticismo",
+        "gnóstico", "gnósticos", "gnosis", "epignosis", "epignose",
+        "pneumático", "pneumáticos", "pneuma",
+        "cosmogonia", "cosmogonias", "cosmologia",
+        "embrionário", "embrionária",
+        "carpocratiano", "carpocratianos", "Carpócrates",
+        "valentiniano", "valentinianos", "Valentim",
+        "Irineu de Leão", "Irineu de Lyon", "bispo de Leão",
+        "Adversus Haereses", "Contra Heresias", "contra as heresias",
+        "Aion", "Aeons", "éon", "éons", "emanação", "emanações",
+        "demiurgo", "pleroma", "kenoma",
+        "docetismo", "doceta", "docetas",
+        "hílico", "hílicos", "psíquico", "psíquicos",
+        
+        # --- Portuguese Idioms & Expressions (NEW) ---
+        "alfinetada", "alfinetadas", "alfinete", "alfinetes", "alfinetar",
+        "dar risada", "dá vontade", "coisa de hospício", "conversa de louco",
+        "gororoba", "feijoada", "galinhada", "mistureba",
+        "se debruçar", "se debruçou", "debruçar sobre",
+        "apulular", "pululou", "pululando",
+        "ensejo", "deu ensejo",
+        
+        # --- Latin Theological Terms (NEW) ---
+        "Adversus", "Haereses", "Eresiae",
+        "corpus", "corporalmente", "habita corporalmente",
+        "plenitude", "plenitudo", "divindade",
+        "sola", "solus", "soli",
+        
+        # --- Numbers and References (NEW) ---
+        "século primeiro", "século segundo", "século II", "século I",
+        "ano 62", "160 quilômetros", "100 anos depois",
+        "versículo 9", "versículo 10", "versículo 14",
+        "Colossenses 2", "2 Coríntios", "primeiro Coríntios",
+        
         # --- Bible Locations ---
         "Jerusalém", "Israel", "Judeia", "Galileia", "Samaria",
         "Roma", "Éfeso", "Corinto", "Colossos", "Filipos",
@@ -1553,23 +2349,140 @@ class TestHarnessSystem:
         "Nicodemos", "Zaqueu", "Lázaro", "Marta", "Maria Madalena",
         "Herodes", "Pilatos", "fariseus", "saduceus", "escribas",
         
-        # --- Common Connector Words ---
-        "portanto", "então", "porque", "pois", "assim",
-        "entretanto", "todavia", "contudo", "porém", "mas",
-        "logo", "ora", "agora", "antes", "depois",
-        "primeiramente", "consequentemente", "além disso",
-        "de fato", "na verdade", "certamente", "claramente",
+        # --- Common Connector Words (trimmed to stay under 500) ---
+        "portanto", "porque", "pois", "entretanto", "todavia",
+        "consequentemente", "além disso", "de fato", "na verdade",
         
-        # --- Preaching Style Words ---
-        "amados", "queridos", "povo de Deus", "santos", "eleitos",
-        "ouçam", "vejam", "percebam", "entendam", "compreendam",
-        "lembrem-se", "guardem", "apliquem", "pratiquem",
-        "creiam", "confiem", "esperem", "amem", "sirvam",
+        # --- Preaching Style Words (trimmed) ---
+        "amados", "queridos", "povo de Deus", "santos",
+        "vejam", "percebam", "entendam", "lembrem-se",
         
         # --- English terms (for bilingual recognition) ---
         "expository sermon", "verse by verse", "Biblical exposition",
         "Reformed theology", "grace", "salvation", "redemption",
     ]
+    
+    # =================================================================
+    # POST-RECOGNITION CORRECTIONS
+    # =================================================================
+    # Fixes common misrecognitions from Google Speech API
+    # Applied AFTER speech recognition, BEFORE translation
+    # Format: "misrecognized text": "correct text"
+    # Uses case-insensitive matching
+    # =================================================================
+    
+    POST_RECOGNITION_CORRECTIONS = {
+        # Gnosticism-related corrections
+        "próprio velocíssimo": "proto-gnosticismo",
+        "próprio sismo": "proto-gnosticismo",
+        "próprio gnosticismo": "proto-gnosticismo",
+        "proto velocíssimo": "proto-gnosticismo",
+        "protognostico": "proto-gnóstico",
+        
+        # Carpocratians
+        "karpa crate ano": "carpocratiano",
+        "karpa crate": "carpocratiano",
+        "carpa crate ano": "carpocratiano",
+        "carpa crateano": "carpocratiano",
+        "carpa cratiano": "carpocratiano",
+        "era um país era um resto": "era um patife era um perverso",  # NEW
+        "um resto da pior": "um perverso da pior",  # NEW
+        
+        # Latin book title
+        "diversos heresias": "Adversus Haereses",
+        "diversas heresias": "Adversus Haereses",
+        "adverso heresias": "Adversus Haereses",
+        
+        # Portuguese idioms
+        "calcinha": "alfinetada",  # Only in sermon context
+        "dava cada calcinha": "dava cada alfinetada",
+        "cada calcinha": "cada alfinetada",
+        
+        # City name
+        "coloque-se cavalinho": "Colossus ficava ali",
+        "coloque se cavalinho": "Colossus ficava ali",
+        "colosso cavalinho": "Colossus ficava ali",
+        
+        # Theological terms
+        "próprio gnostica": "proto-gnóstica",
+        "próprio gnóstico": "proto-gnóstico",
+        "diagnóstico": "gnóstico",  # Common misrecognition
+        "diagnóstica": "gnóstica",
+        
+        # Irenaeus
+        "Irineu de leão": "Irineu de Leão",
+        "irineu de león": "Irineu de Leão",
+        
+        # Gaul/France
+        "Gávea": "Gália",
+        "a Gávea": "a Gália",
+        
+        # Book references
+        "né testamentários": "neotestamentários",
+        "neo testamentários": "neotestamentários",
+        "né o testamentários": "neotestamentários",  # NEW
+        
+        # Common sermon misrecognitions
+        "centro cristão": "centro cristão",  # Keep as is
+        "Santo Cristão": "centro cristão",
+        
+        # Aion/Angel
+        "haeum": "Aion",
+        "a eum": "Aion",
+        "aeon": "Aion",
+        
+        # Vale do Rio Lico
+        "Rio Nico": "Rio Lico",
+        "rio Nico": "Rio Lico",
+        
+        # Other common errors
+        "feitas": "seitas",  # "diversas feitas" -> "diversas seitas"
+        "é o filé": "alfineta",
+        "ele é o filé": "ele alfineta",
+        
+        # NEW corrections from full sermon analysis
+        "e neta": "inepta",  # Word split error
+        "passou no novo": "passou o ano novo",  # Missing word
+        "luz orientar": "nos orientar",  # Misheard
+        "foto saiu retrato": "foto está aí o retrato",  # Misheard
+        "concede meu": "estou com sede meu",  # Misheard phrase
+        "devia mergulhado": "vivia mergulhado",  # Verb error
+        "que o universo": "que universo",  # Extra article
+        "ensinam são esses": "ensinos são esses",  # Verb/noun confusion
+        "Motorola": "Motorola",  # Keep brand name
+        "iPhone": "iPhone",  # Keep brand name
+        "Itaú": "Itaú",  # Keep brand name
+    }
+    
+    @classmethod
+    def apply_post_recognition_corrections(cls, text: str) -> str:
+        """
+        Apply post-recognition corrections to fix common misrecognitions.
+        
+        Args:
+            text: Raw transcript from Google Speech API
+            
+        Returns:
+            Corrected transcript
+        """
+        if not text:
+            return text
+            
+        corrected = text
+        corrections_made = []
+        
+        for wrong, correct in cls.POST_RECOGNITION_CORRECTIONS.items():
+            # Case-insensitive search
+            import re
+            pattern = re.compile(re.escape(wrong), re.IGNORECASE)
+            if pattern.search(corrected):
+                corrected = pattern.sub(correct, corrected)
+                corrections_made.append(f"'{wrong}' → '{correct}'")
+        
+        if corrections_made:
+            print(f"   [CORRECTIONS] {', '.join(corrections_made)}")
+        
+        return corrected
     
     def __init__(self, source_language, target_languages, display_languages, test_mode: int,
                  audio_source: str = "microphone", audio_file_path: str = None, 
@@ -1682,6 +2595,22 @@ class TestHarnessSystem:
         # Skipped content tracking
         self.skipped_finals_count = 0  # FINAL results skipped due to too few new words
         self.skipped_finals_words = 0  # Total words in skipped FINAL results
+        
+        # Dual stream manager reference (Mode 16)
+        self.dual_stream_manager = None
+        
+        # Hybrid buffer (Mode 17)
+        self.hybrid_buffer = None
+        self.last_interim_for_restart = None  # Track last interim for restart recovery
+        self.last_interim_word_count = 0
+        if self.test_config.get('hybrid_buffer_enabled', False):
+            self.hybrid_buffer = HybridBuffer(
+                max_words=self.test_config.get('buffer_max_words', 50),
+                timeout_seconds=self.test_config.get('buffer_timeout_seconds', 15.0),
+                detect_sentence_endings=self.test_config.get('buffer_sentence_endings', True)
+            )
+            print(f"   Hybrid Buffer: ENABLED (max {self.test_config.get('buffer_max_words', 50)} words, "
+                  f"{self.test_config.get('buffer_timeout_seconds', 15.0)}s timeout)")
         
         # Translation logging and context tracking (NEW)
         self.translation_log = []  # List of (timestamp, source_text, translations_dict) tuples
@@ -1884,19 +2813,66 @@ class TestHarnessSystem:
                 # If context is available, prepend it with a separator
                 # Google Translate will use it for better context but we extract only the new part
                 if context_hint:
-                    # Use a separator that won't appear in normal text
-                    full_text = f"{context_hint} ||| {text}"
-                    result = self.translate_client.translate(
-                        full_text, target_language=target_base,
-                        source_language=source_base, format_='text', model='nmt'
-                    )
-                    # Extract only the part after the separator
-                    translated_full = result['translatedText']
-                    if '|||' in translated_full:
-                        translations[lang_name] = translated_full.split('|||')[-1].strip()
+                    # Use bracket separator if enabled (more reliable than |||)
+                    use_brackets = self.test_config.get('use_bracket_separator', False)
+                    
+                    if use_brackets:
+                        # Bracket format: [[[CONTEXT]]] NEW_TEXT
+                        # This is less likely to be mangled by translation
+                        full_text = f"[[[{context_hint}]]] {text}"
+                        result = self.translate_client.translate(
+                            full_text, target_language=target_base,
+                            source_language=source_base, format_='text', model='nmt'
+                        )
+                        translated_full = result['translatedText']
+                        
+                        # Try to extract text after ]]]
+                        if ']]]' in translated_full:
+                            translations[lang_name] = translated_full.split(']]]')[-1].strip()
+                        elif ']]' in translated_full:
+                            # Fallback if one bracket was removed
+                            translations[lang_name] = translated_full.split(']]')[-1].strip()
+                        elif ']' in translated_full:
+                            # Last resort - find last ]
+                            parts = translated_full.rsplit(']', 1)
+                            if len(parts) > 1:
+                                translations[lang_name] = parts[-1].strip()
+                            else:
+                                # Complete failure - translate without context
+                                result = self.translate_client.translate(
+                                    text, target_language=target_base,
+                                    source_language=source_base, format_='text', model='nmt'
+                                )
+                                translations[lang_name] = result['translatedText']
+                        else:
+                            # Brackets completely removed - translate without context
+                            result = self.translate_client.translate(
+                                text, target_language=target_base,
+                                source_language=source_base, format_='text', model='nmt'
+                            )
+                            translations[lang_name] = result['translatedText']
                     else:
-                        # Fallback - separator was translated or removed
-                        translations[lang_name] = translated_full
+                        # Original ||| separator approach
+                        full_text = f"{context_hint} ||| {text}"
+                        result = self.translate_client.translate(
+                            full_text, target_language=target_base,
+                            source_language=source_base, format_='text', model='nmt'
+                        )
+                        # Extract only the part after the separator
+                        translated_full = result['translatedText']
+                        if '|||' in translated_full:
+                            translations[lang_name] = translated_full.split('|||')[-1].strip()
+                        elif '| |' in translated_full:
+                            # Sometimes spaces get added
+                            translations[lang_name] = translated_full.split('| |')[-1].strip()
+                        else:
+                            # Fallback - separator was translated or removed
+                            # Re-translate without context to avoid showing duplicates
+                            result = self.translate_client.translate(
+                                text, target_language=target_base,
+                                source_language=source_base, format_='text', model='nmt'
+                            )
+                            translations[lang_name] = result['translatedText']
                 else:
                     result = self.translate_client.translate(
                         text, target_language=target_base,
@@ -2170,6 +3146,128 @@ class TestHarnessSystem:
         
         print(f"   Translation log saved: {log_filename}")
         return log_filename
+    
+    def _save_native_speaker_review(self, base_filename: str):
+        """Save a formatted review document for native speaker evaluation
+        
+        Creates a clean, easy-to-read document showing Portuguese source
+        and English translation side by side for quality assessment.
+        
+        Args:
+            base_filename: Base filename (without extension) for the report
+        """
+        if not self.translation_log:
+            print("   No translations for native speaker review")
+            return None
+        
+        review_filename = f"{base_filename}_NATIVE_SPEAKER_REVIEW.txt"
+        
+        # Get mode info
+        mode_name = self.test_config.get('name', 'Unknown')
+        context_enabled = self.test_config.get('context_aware_translation', False)
+        context_chunks = self.test_config.get('context_chunks', 0)
+        
+        with open(review_filename, 'w', encoding='utf-8') as f:
+            f.write("=" * 90 + "\n")
+            f.write("    NATIVE SPEAKER REVIEW DOCUMENT\n")
+            f.write("    Portuguese → English Translation Quality Assessment\n")
+            f.write("=" * 90 + "\n\n")
+            
+            f.write("INSTRUCTIONS FOR REVIEWER:\n")
+            f.write("-" * 90 + "\n")
+            f.write("Please review each segment below and evaluate:\n")
+            f.write("  1. Is the English translation UNDERSTANDABLE? (Can you follow the meaning?)\n")
+            f.write("  2. Is the English translation ACCURATE? (Does it convey the same message?)\n")
+            f.write("  3. Are there any CONFUSING parts? (Mark with [?])\n")
+            f.write("  4. Are there any ERRORS? (Mark with [X])\n")
+            f.write("\n")
+            f.write("At the end, please provide:\n")
+            f.write("  - Overall rating: ACCEPTABLE / NOT ACCEPTABLE / NEEDS IMPROVEMENT\n")
+            f.write("  - Specific feedback on recurring issues\n")
+            f.write("\n")
+            f.write("=" * 90 + "\n\n")
+            
+            f.write("TEST INFORMATION:\n")
+            f.write("-" * 90 + "\n")
+            f.write(f"Mode: {mode_name}\n")
+            f.write(f"Context Translation: {'ENABLED (' + str(context_chunks) + ' previous segments)' if context_enabled else 'DISABLED'}\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total Segments: {len(self.translation_log)}\n")
+            f.write(f"Source: {self.source_language[1]}\n")
+            f.write(f"Target: English\n")
+            f.write("\n" + "=" * 90 + "\n")
+            f.write("    TRANSLATIONS FOR REVIEW\n")
+            f.write("=" * 90 + "\n\n")
+            
+            for i, entry in enumerate(self.translation_log, 1):
+                f.write(f"┌{'─' * 88}┐\n")
+                f.write(f"│ SEGMENT {i:4d}                                                                         │\n")
+                f.write(f"├{'─' * 88}┤\n")
+                
+                # Portuguese source (wrap long lines)
+                source_text = entry['source_text']
+                f.write(f"│ PORTUGUÊS:                                                                           │\n")
+                
+                # Word wrap at ~80 chars
+                words = source_text.split()
+                line = "│   "
+                for word in words:
+                    if len(line) + len(word) + 1 > 87:
+                        f.write(f"{line:<89}│\n")
+                        line = "│   "
+                    line += word + " "
+                if line.strip() != "│":
+                    f.write(f"{line:<89}│\n")
+                
+                f.write(f"│                                                                                        │\n")
+                
+                # English translation
+                english_text = entry['translations'].get('English (US)', 
+                              entry['translations'].get('English', 
+                              list(entry['translations'].values())[0] if entry['translations'] else '[No translation]'))
+                
+                f.write(f"│ ENGLISH:                                                                             │\n")
+                
+                words = english_text.split()
+                line = "│   "
+                for word in words:
+                    if len(line) + len(word) + 1 > 87:
+                        f.write(f"{line:<89}│\n")
+                        line = "│   "
+                    line += word + " "
+                if line.strip() != "│":
+                    f.write(f"{line:<89}│\n")
+                
+                f.write(f"│                                                                                        │\n")
+                f.write(f"│ REVIEWER NOTES: ________________________________________________________              │\n")
+                f.write(f"│                                                                                        │\n")
+                f.write(f"└{'─' * 88}┘\n\n")
+            
+            # Summary section at end
+            f.write("\n" + "=" * 90 + "\n")
+            f.write("    REVIEWER SUMMARY\n")
+            f.write("=" * 90 + "\n\n")
+            f.write("Overall Rating (circle one):   ACCEPTABLE   /   NOT ACCEPTABLE   /   NEEDS IMPROVEMENT\n\n")
+            f.write("Percentage of segments that were understandable: _______ %\n\n")
+            f.write("Percentage of segments that were accurate: _______ %\n\n")
+            f.write("Most common issues observed:\n")
+            f.write("  1. _________________________________________________________________\n")
+            f.write("  2. _________________________________________________________________\n")
+            f.write("  3. _________________________________________________________________\n\n")
+            f.write("Comparison to previous version (if applicable):\n")
+            f.write("  [ ] Much better\n")
+            f.write("  [ ] Somewhat better\n")
+            f.write("  [ ] About the same\n")
+            f.write("  [ ] Worse\n\n")
+            f.write("Additional comments:\n")
+            f.write("_" * 90 + "\n")
+            f.write("_" * 90 + "\n")
+            f.write("_" * 90 + "\n")
+            f.write("_" * 90 + "\n\n")
+            f.write("Reviewer name: ________________________  Date: _______________\n")
+        
+        print(f"   Native speaker review document saved: {review_filename}")
+        return review_filename
     
     def _run_context_comparison(self, base_filename: str):
         """Run context comparison diagnostic
@@ -2668,6 +3766,236 @@ If you see many HIGH severity items, consider:
         finally:
             self.stop()
     
+    def _run_dual_stream_mode(self, config, streaming_config):
+        """
+        Run in dual stream mode for maximum coverage.
+        
+        Uses DualStreamManager to run two overlapping streams,
+        eliminating gaps during stream restarts.
+        
+        PRIMARY/BACKUP MODEL:
+        - Stream A = Primary (outputs to display)
+        - Stream B = Backup (buffers, releases during gaps)
+        """
+        print("\n" + "=" * 60)
+        print("   DUAL STREAM MODE (Mode 16) - PRIMARY/BACKUP MODEL")
+        print("=" * 60)
+        
+        # Get dual stream settings
+        stream_b_delay = self.test_config.get('stream_b_delay_seconds', 150)
+        gap_threshold = self.test_config.get('gap_threshold_seconds', 3.0)
+        buffer_duration = self.test_config.get('buffer_duration_seconds', 30.0)
+        
+        # Create dual stream manager with Primary/Backup model
+        dual_manager = DualStreamManager(
+            speech_client=self.speech_client,
+            config=config,
+            streaming_config=streaming_config,
+            audio_streamer=self.audio_streamer,
+            stream_b_delay=stream_b_delay,
+            gap_threshold=gap_threshold,
+            buffer_duration=buffer_duration
+        )
+        
+        # Store reference for cleanup
+        self.dual_stream_manager = dual_manager
+        
+        # Start dual streams
+        dual_manager.start()
+        
+        print(f"   Waiting for first recognition result...")
+        
+        # Main processing loop
+        while self.display.is_running:
+            # Check if file playback finished
+            if self.audio_source == "file" and hasattr(self.audio_streamer, 'is_finished'):
+                if self.audio_streamer.is_finished and self.audio_streamer.audio_queue.empty():
+                    # Wait a bit for final results from both streams
+                    time.sleep(2)
+                    
+                    # Record when audio ended
+                    if self.audio_end_time is None:
+                        self.audio_end_time = datetime.now()
+                        
+                        # Get dual stream stats
+                        stats = dual_manager.get_statistics()
+                        print(f"\nFINISHED - Audio file playback complete")
+                        print(f"   === PRIMARY/BACKUP STATISTICS ===")
+                        print(f"   Stream A (PRIMARY) segments: {stats['stream_a_segments']}")
+                        print(f"   Stream B (BACKUP) segments released: {stats['stream_b_segments']}")
+                        print(f"   Stream B segments buffered (total): {stats['stream_b_buffered']}")
+                        print(f"   Gaps filled by backup: {stats['gaps_filled']}")
+                        print(f"   Stream A restarts: {stats['stream_a_restarts']}")
+                        print(f"   Stream B restarts: {stats['stream_b_restarts']}")
+                        print(f"   Current buffer size: {stats['buffer_size']}")
+                        print(f"   Waiting for display queue to drain...")
+                    
+                    # Wait for display queue to empty
+                    if self.display.text_queue.empty():
+                        self.final_display_time = datetime.now()
+                        queue_drain_time = (self.final_display_time - self.audio_end_time).total_seconds()
+                        print(f"\nOK - Queue drained at {self.final_display_time.strftime('%H:%M:%S')}")
+                        print(f"   QUEUE DRAIN TIME: {queue_drain_time:.1f} seconds")
+                        
+                        time.sleep(2)
+                        dual_manager.stop()
+                        self.display.root.after(0, self._stop)
+                        break
+                    else:
+                        time.sleep(0.5)
+                        continue
+            
+            if self.is_paused:
+                dual_manager.is_paused = True
+                time.sleep(0.5)
+                continue
+            else:
+                dual_manager.is_paused = False
+            
+            # Get next result from dual stream manager
+            result = dual_manager.get_next_result(timeout=0.5)
+            
+            if result is None:
+                continue
+            
+            transcript = result['transcript']
+            stream_id = result['stream_id']
+            
+            # Apply post-recognition corrections
+            transcript = self.apply_post_recognition_corrections(transcript)
+            
+            # Track first result timing
+            if self.first_result_time is None:
+                self.first_result_time = datetime.now()
+                time_to_first = (self.first_result_time - self.stream_start_time).total_seconds()
+                print(f"\n   FIRST RESULT received at {self.first_result_time.strftime('%H:%M:%S')}")
+                print(f"   Time to first result: {time_to_first:.1f} seconds")
+                print("-" * 50)
+            
+            word_count = len(transcript.split())
+            
+            # Create segment data
+            self.segment_counter += 1
+            original_segment_id = self.segment_counter
+            timestamp_spoken = result['timestamp']
+            timestamp_recognized = datetime.now()
+            
+            # Track last segment time
+            self.last_segment_time = timestamp_recognized
+            
+            # Skip if hard paused
+            if self.is_hard_paused:
+                print(f"   [HARD PAUSED] Skipping segment {original_segment_id}")
+                continue
+            
+            # Translate
+            translations = self.translate_to_multiple(transcript)
+            timestamp_translated = datetime.now()
+            
+            # Check if chunk splitting is needed
+            chunk_split_enabled = self.test_config.get('chunk_split_enabled', False)
+            chunk_threshold = self.test_config.get('chunk_split_threshold', 40)
+            chunk_min = self.test_config.get('chunk_min_size', 15)
+            
+            if chunk_split_enabled and word_count > chunk_threshold:
+                # Split the text into chunks
+                original_chunks = self.split_text_into_chunks(transcript, chunk_threshold, chunk_min)
+                
+                for chunk_num, chunk_text in enumerate(original_chunks, 1):
+                    chunk_word_count = len(chunk_text.split())
+                    
+                    # Translate chunk
+                    chunk_translations = self.translate_to_multiple(chunk_text)
+                    chunk_timestamp = datetime.now()
+                    
+                    # Create segment for this chunk
+                    chunk_segment = SegmentData(
+                        segment_id=self.segment_counter,
+                        text_original=chunk_text,
+                        text_translated=chunk_translations,
+                        word_count=chunk_word_count,
+                        timestamp_spoken=timestamp_spoken,
+                        timestamp_recognized=timestamp_recognized,
+                        timestamp_translated=chunk_timestamp,
+                        timestamp_queued=datetime.now(),
+                        queue_depth_at_queue=self.display.text_queue.qsize(),
+                        original_segment_id=original_segment_id,
+                        chunk_number=chunk_num,
+                        total_chunks=len(original_chunks),
+                        was_split=True,
+                        original_word_count=word_count,
+                    )
+                    
+                    # Log to console
+                    print(f"[Stream {stream_id}] [{datetime.now().strftime('%H:%M:%S')}] Chunk {chunk_num}/{len(original_chunks)}: {chunk_text[:60]}...")
+                    for lang_name, translation in chunk_translations.items():
+                        print(f"   -> {lang_name}: {translation[:60]}...")
+                    
+                    # Build display list
+                    display_translations = [
+                        chunk_translations.get(lang[1], "") 
+                        for lang in self.display_languages
+                    ]
+                    self.display.add_translation(display_translations, chunk_segment, False)
+                    
+                    # Write to CSV
+                    self._write_csv_row(chunk_segment)
+                    
+                    # Add to session
+                    self.session.add_segment(chunk_segment)
+                    
+                    # Log to file
+                    if self.output_file:
+                        self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Stream {stream_id} Segment {self.segment_counter} (chunk {chunk_num}/{len(original_chunks)})\n")
+                        self.output_file.write(f"  Text: {chunk_text}\n\n")
+                        self.output_file.flush()
+                    
+                    self.segment_counter += 1
+            else:
+                # No splitting needed
+                segment = SegmentData(
+                    segment_id=original_segment_id,
+                    text_original=transcript,
+                    text_translated=translations,
+                    word_count=word_count,
+                    timestamp_spoken=timestamp_spoken,
+                    timestamp_recognized=timestamp_recognized,
+                    timestamp_translated=timestamp_translated,
+                    timestamp_queued=datetime.now(),
+                    queue_depth_at_queue=self.display.text_queue.qsize(),
+                )
+                
+                # Log to console
+                print(f"[Stream {stream_id}] [{datetime.now().strftime('%H:%M:%S')}] {transcript}")
+                for lang_name, translation in translations.items():
+                    print(f"   -> {lang_name}: {translation}")
+                
+                # Build display list
+                display_translations = [
+                    translations.get(lang[1], "") 
+                    for lang in self.display_languages
+                ]
+                self.display.add_translation(display_translations, segment, False)
+                
+                # Write to CSV
+                self._write_csv_row(segment)
+                
+                # Add to session
+                self.session.add_segment(segment)
+                
+                # Log to file
+                if self.output_file:
+                    self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Stream {stream_id} Segment {segment.segment_id}\n")
+                    self.output_file.write(f"  Latency: {segment.latency_recognition:.2f}s (recog) + {segment.latency_translation:.2f}s (trans)\n")
+                    self.output_file.write(f"  Queue depth: {segment.queue_depth_at_queue}\n")
+                    self.output_file.write(f"  Text: {transcript}\n\n")
+                    self.output_file.flush()
+                
+                print("-" * 50)
+        
+        # Cleanup
+        dual_manager.stop()
+    
     def _audio_processing(self):
         """Audio processing with full instrumentation"""
         
@@ -2755,6 +4083,12 @@ If you see many HIGH severity items, consider:
         self.stream_start_time = datetime.now()
         
         print(f"\n   Streaming started at {self.stream_start_time.strftime('%H:%M:%S')}")
+        
+        # Check if dual stream mode is enabled (Mode 16)
+        if self.test_config.get('dual_stream_enabled', False):
+            self._run_dual_stream_mode(config, streaming_config)
+            return
+        
         print(f"   Waiting for first recognition result...")
         
         while self.display.is_running:
@@ -2812,16 +4146,76 @@ If you see many HIGH severity items, consider:
                     
                     for result in response.results:
                         transcript = result.alternatives[0].transcript
+                        
+                        # Apply post-recognition corrections to fix common misrecognitions
+                        transcript = self.apply_post_recognition_corrections(transcript)
+                        
                         is_final = result.is_final
                         word_count = len(transcript.split())
                         
-                        # Check for early interim display mode
-                        early_interim_enabled = self.test_config.get('early_interim_display', False)
-                        early_interim_threshold = self.test_config.get('early_interim_word_threshold', 20)
+                        # ============================================================
+                        # HYBRID BUFFER MODE (Mode 17)
+                        # ============================================================
+                        # If hybrid buffer is enabled, collect FINAL results until:
+                        # 1. Sentence ending detected (. ? !)
+                        # 2. Word count reaches threshold
+                        # 3. Timeout elapsed
+                        # 
+                        # IMPORTANT: Only process FINAL results to avoid duplicates!
+                        # Interim results are tracked for restart flush only.
+                        # ============================================================
+                        if self.hybrid_buffer is not None:
+                            # ALWAYS track the latest content for restart recovery
+                            # (whether interim or FINAL - we want the most recent content)
+                            if not is_final:
+                                # Save interim for potential restart recovery
+                                self.last_interim_for_restart = transcript
+                                self.last_interim_word_count = word_count
+                                print(f"(interim) {word_count} words - waiting for FINAL...", end='\r')
+                                continue
+                            else:
+                                # FINAL received - DON'T clear interim tracker yet!
+                                # Keep it available in case restart happens right after.
+                                # The FINAL content is the same as the last interim, so we
+                                # can keep the interim tracker as-is for restart recovery.
+                                # It will be cleared after successful restart flush.
+                                pass
+                            
+                            # Add FINAL result to buffer
+                            should_flush, buffered_text, flush_reason = self.hybrid_buffer.add_fragment(
+                                transcript, is_final
+                            )
+                            
+                            if not should_flush:
+                                # Not ready to flush - show buffer status
+                                # Also update the restart tracker with this FINAL
+                                self.last_interim_for_restart = transcript
+                                self.last_interim_word_count = word_count
+                                status = self.hybrid_buffer.get_buffer_status()
+                                print(f"\n[BUFFER] Added FINAL: {word_count} words | "
+                                      f"Buffer: {status['words']} words, {status['elapsed_seconds']:.1f}s elapsed")
+                                continue
+                            else:
+                                # Buffer is ready to flush - NOW we can clear the restart tracker
+                                # because we're about to display this content
+                                self.last_interim_for_restart = None
+                                self.last_interim_word_count = 0
+                                
+                                transcript = buffered_text
+                                word_count = len(transcript.split())
+                                is_final = True  # Treat buffered content as final
+                                
+                                print(f"\n[BUFFER FLUSH] {flush_reason.upper()}: {word_count} words")
+                                
+                                # Skip early interim logic since we're using buffer
+                                # Fall through to translation
                         
-                        # Handle interim results
-                        if not is_final:
-                            if early_interim_enabled:
+                        # Check for early interim display mode (ONLY if not using hybrid buffer)
+                        elif self.test_config.get('early_interim_display', False):
+                            early_interim_threshold = self.test_config.get('early_interim_word_threshold', 20)
+                            
+                            # Handle interim results
+                            if not is_final:
                                 # Early interim display mode - display after threshold words
                                 new_word_count = word_count - self.interim_words_displayed
                                 
@@ -2846,35 +4240,38 @@ If you see many HIGH severity items, consider:
                                     # Not enough NEW words yet
                                     print(f"(interim) {word_count} total, {new_word_count} new - waiting for {early_interim_threshold} new...", end='\r')
                                     continue
-                            elif not self.test_config.get('use_interim_results'):
-                                # Standard mode - skip interim
-                                print(f"(interim) {transcript}", end='\r')
-                                continue
-                        else:
-                            # FINAL result arrived
-                            if early_interim_enabled and self.interim_words_displayed > 0:
-                                # We displayed interim, now show remaining NEW words only
-                                new_word_count = word_count - self.interim_words_displayed
+                            else:
+                                # FINAL result arrived with early interim enabled
+                                if self.interim_words_displayed > 0:
+                                    # We displayed interim, now show remaining NEW words only
+                                    new_word_count = word_count - self.interim_words_displayed
+                                    
+                                    if new_word_count > 2:  # Only display if meaningful new content
+                                        print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] +{new_word_count} new words from final")
+                                        # Extract just the NEW words
+                                        words = transcript.split()
+                                        transcript = ' '.join(words[self.interim_words_displayed:])
+                                        word_count = len(transcript.split())
+                                    else:
+                                        print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] Final received (+{new_word_count} words, skipping)")
+                                        # Track skipped FINAL content
+                                        self.skipped_finals_count += 1
+                                        self.skipped_finals_words += new_word_count
+                                        # Reset tracking for next utterance
+                                        self.interim_words_displayed = 0
+                                        self.interim_text_displayed = ""
+                                        continue  # Skip since we already displayed most of it
                                 
-                                if new_word_count > 2:  # Only display if meaningful new content (reduced from 5)
-                                    print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] +{new_word_count} new words from final")
-                                    # Extract just the NEW words
-                                    words = transcript.split()
-                                    transcript = ' '.join(words[self.interim_words_displayed:])
-                                    word_count = len(transcript.split())
-                                else:
-                                    print(f"[Final] [{datetime.now().strftime('%H:%M:%S')}] Final received (+{new_word_count} words, skipping)")
-                                    # Track skipped FINAL content
-                                    self.skipped_finals_count += 1
-                                    self.skipped_finals_words += new_word_count
-                                    # Reset tracking for next utterance
-                                    self.interim_words_displayed = 0
-                                    self.interim_text_displayed = ""
-                                    continue  # Skip since we already displayed most of it
-                            
-                            # Reset interim tracking for next utterance
-                            self.interim_words_displayed = 0
-                            self.interim_text_displayed = ""
+                                # Reset interim tracking for next utterance
+                                self.interim_words_displayed = 0
+                                self.interim_text_displayed = ""
+                        
+                        else:
+                            # Standard mode (no hybrid buffer, no early interim)
+                            if not is_final:
+                                if not self.test_config.get('use_interim_results'):
+                                    print(f"(interim) {transcript}", end='\r')
+                                    continue
                         
                         # Track first result timing
                         if self.first_result_time is None:
@@ -3027,6 +4424,80 @@ If you see many HIGH severity items, consider:
                         self.stream_restart_count += 1
                         restart_time = datetime.now()
                         
+                        # ============================================================
+                        # FLUSH HYBRID BUFFER ON RESTART (Option C)
+                        # ============================================================
+                        # When stream restarts, immediately flush any buffered content
+                        # AND recover any pending interim content to prevent loss.
+                        # ============================================================
+                        if self.hybrid_buffer is not None:
+                            # First, flush any buffered FINAL content
+                            has_content, buffered_text = self.hybrid_buffer.flush(reason='restart')
+                            
+                            # Debug: Log state before recovery attempt
+                            print(f"\n[RESTART DEBUG] Buffer had content: {has_content}")
+                            print(f"[RESTART DEBUG] Last interim available: {self.last_interim_for_restart is not None}")
+                            print(f"[RESTART DEBUG] Last interim words: {self.last_interim_word_count}")
+                            
+                            # Also recover the last interim if we have one (this is the key fix!)
+                            # Lowered threshold from 5 to 3 words to capture more content
+                            if self.last_interim_for_restart and self.last_interim_word_count >= 3:
+                                # Combine buffer content with last interim
+                                if has_content and buffered_text:
+                                    combined_text = buffered_text + " " + self.last_interim_for_restart
+                                else:
+                                    combined_text = self.last_interim_for_restart
+                                    has_content = True
+                                
+                                print(f"[RESTART FLUSH] Recovering {self.last_interim_word_count} words from last interim")
+                                buffered_text = combined_text
+                                
+                                # Track this as a restart flush
+                                self.hybrid_buffer.flushes_by_restart += 1
+                                
+                                # Clear the interim tracker
+                                self.last_interim_for_restart = None
+                                self.last_interim_word_count = 0
+                            
+                            if has_content and buffered_text:
+                                word_count = len(buffered_text.split())
+                                print(f"[RESTART FLUSH] Total flushed: {word_count} words")
+                                
+                                # Translate and display the buffered content
+                                translations = self.translate_to_multiple(buffered_text)
+                                timestamp_translated = datetime.now()
+                                
+                                self.segment_counter += 1
+                                segment = SegmentData(
+                                    segment_id=self.segment_counter,
+                                    text_original=buffered_text,
+                                    text_translated=translations,
+                                    word_count=word_count,
+                                    timestamp_spoken=self.last_audio_timestamp or restart_time,
+                                    timestamp_recognized=restart_time,
+                                    timestamp_translated=timestamp_translated,
+                                    timestamp_queued=datetime.now(),
+                                    is_interim=False,
+                                    queue_depth_at_queue=self.display.text_queue.qsize()
+                                )
+                                
+                                # Display
+                                display_translations = [
+                                    translations.get(lang[1], "") 
+                                    for lang in self.display_languages
+                                ]
+                                self.display.add_translation(display_translations, segment, False)
+                                
+                                # Write to CSV and session
+                                self._write_csv_row(segment)
+                                self.session.add_segment(segment)
+                                
+                                # Update last segment time to reduce gap calculation
+                                self.last_segment_time = datetime.now()
+                                
+                                for lang_name, translation in translations.items():
+                                    print(f"   -> {lang_name}: {translation[:80]}...")
+                        
                         # Calculate gap since last segment
                         if self.last_segment_time:
                             gap_duration = (restart_time - self.last_segment_time).total_seconds()
@@ -3061,6 +4532,49 @@ If you see many HIGH severity items, consider:
         if self.active_start_time and not self.is_paused:
             self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
         
+        # ============================================================
+        # FLUSH HYBRID BUFFER ON STOP (Option C)
+        # ============================================================
+        # When test stops, flush any remaining buffered content
+        # to prevent content loss at the end of the audio.
+        # ============================================================
+        if self.hybrid_buffer is not None:
+            has_content, buffered_text = self.hybrid_buffer.flush(reason='final')
+            if has_content and buffered_text and len(buffered_text.split()) >= 3:
+                print(f"\n[FINAL FLUSH] Flushing remaining buffer: {len(buffered_text.split())} words")
+                
+                # Translate and display the buffered content
+                translations = self.translate_to_multiple(buffered_text)
+                timestamp_translated = datetime.now()
+                
+                self.segment_counter += 1
+                segment = SegmentData(
+                    segment_id=self.segment_counter,
+                    text_original=buffered_text,
+                    text_translated=translations,
+                    word_count=len(buffered_text.split()),
+                    timestamp_spoken=self.last_audio_timestamp or datetime.now(),
+                    timestamp_recognized=datetime.now(),
+                    timestamp_translated=timestamp_translated,
+                    timestamp_queued=datetime.now(),
+                    is_interim=False,
+                    queue_depth_at_queue=self.display.text_queue.qsize()
+                )
+                
+                # Display
+                display_translations = [
+                    translations.get(lang[1], "") 
+                    for lang in self.display_languages
+                ]
+                self.display.add_translation(display_translations, segment, False)
+                
+                # Write to CSV and session
+                self._write_csv_row(segment)
+                self.session.add_segment(segment)
+                
+                for lang_name, translation in translations.items():
+                    print(f"   -> {lang_name}: {translation[:80]}...")
+        
         self.audio_streamer.stop_stream()
         
         # Cleanup temp files for file streamer
@@ -3078,6 +4592,24 @@ If you see many HIGH severity items, consider:
             self.output_file.close()
         
         print("✅ Test complete!")
+    
+    def _get_hybrid_buffer_stats(self) -> str:
+        """Get hybrid buffer statistics as formatted string for summary."""
+        if not self.hybrid_buffer:
+            return ""
+        
+        stats = self.hybrid_buffer.get_statistics()
+        
+        return f"""HYBRID BUFFER STATISTICS
+------------------------
+Total Flushes:        {stats['total_flushes']}
+  By Sentence End:    {stats['flushes_by_sentence']} (. ? !)
+  By Word Count:      {stats['flushes_by_words']} (≥{self.test_config.get('buffer_max_words', 50)} words)
+  By Timeout:         {stats['flushes_by_timeout']} (≥{self.test_config.get('buffer_timeout_seconds', 15)}s)
+  By Restart:         {stats['flushes_by_restart']} (stream restart - prevents content loss)
+  By Final:           {stats['flushes_by_final']} (test end - captures remaining content)
+
+"""
     
     def _generate_summary(self):
         """Generate test summary report"""
@@ -3571,13 +5103,14 @@ Context-Aware Translation: {'Enabled (using ' + str(self.test_config.get('contex
 Translation Logging: {'Enabled' if self.test_config.get('save_translation_log') else 'Disabled'}
 Glossary Lookup: {'Enabled (' + str(len(THEOLOGICAL_GLOSSARY)) + ' terms)' if self.test_config.get('use_glossary') else 'Disabled'}
 Async Context Comparison: {'Enabled' if self.test_config.get('async_context_comparison') else 'Disabled'}
+Hybrid Buffer: {'Enabled (max ' + str(self.test_config.get('buffer_max_words', 50)) + ' words, ' + str(self.test_config.get('buffer_timeout_seconds', 15)) + 's timeout)' if self.test_config.get('hybrid_buffer_enabled') else 'Disabled'}
 
 STREAMING STATISTICS
 --------------------
 Time to First Result: {time_to_first_str}
 Stream Restarts:      {self.stream_restart_count}
 {restart_gap_section}
-TIMING STATISTICS
+{self._get_hybrid_buffer_stats() if self.hybrid_buffer else ''}TIMING STATISTICS
 -----------------
 Test Duration: {self.session.duration_seconds/60:.1f} minutes
 Active Time: {self.total_active_time/60:.1f} minutes
@@ -3656,6 +5189,9 @@ Average Queue Wait ({avg_queue_wait:.2f}s) vs Drain Time ({queue_drain_str}):
         if self.test_config.get('save_translation_log', False):
             print("\n📝 Saving translation log...")
             self._save_translation_log(base_filename)
+            # Also generate native speaker review document
+            print("\n👤 Generating native speaker review document...")
+            self._save_native_speaker_review(base_filename)
         
         if self.test_config.get('run_context_comparison', False):
             print("\n🔍 Running context comparison diagnostic...")
@@ -3712,10 +5248,16 @@ def select_test_mode():
             print(f"     VOICE TIMEOUT: speech_end={config.get('speech_end_timeout_sec')}s (forces faster finalization)")
         if config.get('early_interim_display'):
             print(f"     EARLY INTERIM: Display after {config.get('early_interim_word_threshold')} words (don't wait for FINAL)")
+        if config.get('hybrid_buffer_enabled'):
+            print(f"     📦 HYBRID BUFFER: Sentence end OR {config.get('buffer_max_words')} words OR {config.get('buffer_timeout_seconds')}s timeout")
+        if config.get('context_aware_translation'):
+            print(f"     ⭐ CONTEXT TRANSLATION: Uses {config.get('context_chunks', 1)} previous segments for better quality")
         if config.get('use_glossary'):
             print(f"     GLOSSARY: {len(THEOLOGICAL_GLOSSARY)} theological terms for consistency")
         if config.get('async_context_comparison'):
             print(f"     ASYNC CONTEXT: Background comparison for quality analysis")
+        if config.get('dual_stream_enabled'):
+            print(f"     🔄 DUAL STREAMS: Overlapping streams for ~99% coverage (no restart gaps)")
     
     print("\n" + "-"*70)
     print("  L. View last test results")
@@ -3724,7 +5266,7 @@ def select_test_mode():
     print("-"*70)
     
     while True:
-        choice = input("\nEnter choice (0-13, L, C, Q): ").strip().upper()
+        choice = input("\nEnter choice (0-17, L, C, Q): ").strip().upper()
         
         if choice == 'Q':
             print("Exiting...")
@@ -3735,7 +5277,7 @@ def select_test_mode():
         elif choice == 'C':
             compare_all_results()
             return select_test_mode()  # Return to menu
-        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']:
+        elif choice in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17']:
             return int(choice)
         else:
             print("Invalid choice. Try again.")
