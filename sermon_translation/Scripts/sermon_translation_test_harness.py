@@ -860,8 +860,8 @@ class TestHarnessDisplay:
         self.config = test_mode_config
         self.text_queue = queue.Queue()
         self.is_running = False
-        self.is_paused = False
-        self.is_hard_paused = False  # Hard pause = full stop
+        self.is_stopped = False
+        self.is_stopped = False  # Hard pause = full stop
         self.in_catchup_mode = False
         
         # Store language names
@@ -1136,32 +1136,29 @@ class TestHarnessDisplay:
             
             time.sleep(0.2)
     
-    def set_paused(self, paused, hard=False):
-        """Update pause state with visual indicator
+    def set_stopped(self, stopped):
+        """Update stopped state with visual indicator
         
         Args:
-            paused: Whether paused
-            hard: If True, this is a hard pause (full stop)
+            stopped: Whether translation is stopped
         """
-        self.is_paused = paused
-        self.is_hard_paused = hard if paused else False
+        self.is_stopped = stopped
         
-        if paused:
-            if hard:
-                self.status_bar.config(
-                    text="⏹️ STOPPED - No API calls - Ctrl+Shift+R to resume fresh", 
-                    bg='#cc0000'  # Dark red
-                )
-            else:
-                self.status_bar.config(
-                    text="⏸️ PAUSED - Queue building - Ctrl+Shift+R to resume | Ctrl+Shift+X to stop", 
-                    bg='orange'
-                )
+        if stopped:
+            self.status_bar.config(
+                text="⏹️ STOPPED - Press Ctrl+Shift+R to START | Ctrl+Shift+Q to quit", 
+                bg='#cc0000'  # Dark red
+            )
         else:
             self.status_bar.config(
-                text="🟢 ACTIVE - Ctrl+Shift+P to pause | Ctrl+Shift+X to stop", 
+                text="🟢 RUNNING - Press Ctrl+Shift+S to STOP | Ctrl+Shift+Q to quit", 
                 bg='green'
             )
+    
+    # Keep set_paused as alias for compatibility
+    def set_paused(self, paused, hard=False):
+        """Legacy method - redirects to set_stopped"""
+        self.set_stopped(paused)
     
     def add_translation(self, translations: list, segment_data: SegmentData, is_interim=False):
         """Add translation to queue with tracking data
@@ -1263,6 +1260,9 @@ class TestHarnessDisplay:
             text_font = self.display_font
             base_color = '#ffffff'
         
+        # Update presentation window immediately (no fade, clean display)
+        self.update_presentation_window(translations, is_interim)
+        
         if fade_duration <= 0:
             for i, text_label in enumerate(self.lang_texts):
                 text = translations[i] if i < len(translations) else ""
@@ -1289,23 +1289,250 @@ class TestHarnessDisplay:
         self.current_texts = [""] * self.num_languages
         for text_label in self.lang_texts:
             text_label.config(text="")
+        # Also clear presentation window if open
+        if hasattr(self, 'presentation_window') and self.presentation_window:
+            self.presentation_window.clear_display()
     
     def increase_font(self):
-        self.font_size = min(self.font_size + 2, 48)
+        self.font_size = min(self.font_size + 2, 120)  # Max 120 for 4K displays
         self.display_font.configure(size=self.font_size)
         self.display_font_italic.configure(size=self.font_size)
+        # Sync to presentation window
+        if hasattr(self, 'presentation_window') and self.presentation_window:
+            self.presentation_window.set_font_size(self.font_size)
     
     def decrease_font(self):
         self.font_size = max(self.font_size - 2, 16)
         self.display_font.configure(size=self.font_size)
         self.display_font_italic.configure(size=self.font_size)
+        # Sync to presentation window
+        if hasattr(self, 'presentation_window') and self.presentation_window:
+            self.presentation_window.set_font_size(self.font_size)
+    
+    def toggle_presentation_window(self, event=None):
+        """Toggle presentation window on/off (F5)"""
+        if hasattr(self, 'presentation_window') and self.presentation_window:
+            # Close presentation window
+            self.presentation_window.close()
+            self.presentation_window = None
+            print(f"\n📺 [{datetime.now().strftime('%H:%M:%S')}] Presentation window CLOSED")
+        else:
+            # Open presentation window on second monitor
+            self.presentation_window = PresentationWindow(
+                self.root,
+                self.language_names,
+                self.font_size
+            )
+            # Sync current text to presentation
+            if self.current_texts:
+                self.presentation_window.update_text(
+                    self.current_texts, 
+                    self.current_is_interim
+                )
+            print(f"\n📺 [{datetime.now().strftime('%H:%M:%S')}] Presentation window OPENED")
+            print(f"    (Drag to congregation screen if needed)")
+    
+    def update_presentation_window(self, translations, is_interim=False):
+        """Update presentation window with new translations"""
+        if hasattr(self, 'presentation_window') and self.presentation_window:
+            self.presentation_window.update_text(translations, is_interim)
     
     def run(self):
+        # Add F5 binding for presentation window toggle
+        self.root.bind('<F5>', self.toggle_presentation_window)
+        self.presentation_window = None  # Initialize as None
+        print("\n💡 Press F5 to open/close PRESENTATION WINDOW for congregation")
         self.root.mainloop()
     
     def stop(self):
         self.is_running = False
+        # Close presentation window if open
+        if hasattr(self, 'presentation_window') and self.presentation_window:
+            self.presentation_window.close()
         self.root.quit()
+
+
+class PresentationWindow:
+    """
+    Clean fullscreen presentation window for congregation display.
+    Shows ONLY translated text - no tech info, status bars, or controls.
+    """
+    
+    def __init__(self, parent_root, language_names, font_size=28):
+        """
+        Initialize presentation window
+        
+        Args:
+            parent_root: Parent Tk window (for monitor detection)
+            language_names: List of language names to display
+            font_size: Initial font size (synced from main window)
+        """
+        self.language_names = language_names
+        self.num_languages = len(language_names)
+        self.font_size = font_size
+        
+        # Create new top-level window
+        self.window = tk.Toplevel(parent_root)
+        self.window.title("Translation Display - Congregation")
+        self.window.configure(bg='black')
+        
+        # Try to detect and use second monitor
+        self._position_on_second_monitor(parent_root)
+        
+        # Remove window decorations for clean look (optional - can be toggled)
+        # self.window.overrideredirect(True)  # Uncomment for borderless
+        
+        # Make it stay on top
+        self.window.attributes('-topmost', True)
+        
+        # Create fonts
+        self.display_font = font.Font(family="Arial", size=self.font_size, weight="bold")
+        self.display_font_italic = font.Font(family="Arial", size=self.font_size, weight="bold", slant="italic")
+        
+        # Main container
+        main_frame = tk.Frame(self.window, bg='black')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Create text labels for each language
+        self.lang_frames = []
+        self.lang_texts = []
+        self.lang_headers = []
+        
+        # Colors for language headers
+        header_colors = ['#ffcc00', '#00ccff', '#ff6699', '#66ff66']
+        
+        for i, lang_name in enumerate(self.language_names):
+            # Language frame
+            lang_frame = tk.Frame(main_frame, bg='black')
+            lang_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+            self.lang_frames.append(lang_frame)
+            
+            # Language header (small, subtle)
+            header = tk.Label(
+                lang_frame,
+                text=lang_name.upper(),
+                font=font.Font(family="Arial", size=14, weight="bold"),
+                fg=header_colors[i % len(header_colors)],
+                bg='black'
+            )
+            header.pack()
+            self.lang_headers.append(header)
+            
+            # Language text (large, prominent)
+            text_label = tk.Label(
+                lang_frame,
+                text="",
+                font=self.display_font,
+                fg='white',
+                bg='black',
+                justify='center',
+                wraplength=self.window.winfo_screenwidth() - 100
+            )
+            text_label.pack(expand=True, fill=tk.BOTH)
+            self.lang_texts.append(text_label)
+            
+            # Separator (except after last language)
+            if i < len(self.language_names) - 1:
+                separator = tk.Frame(main_frame, bg='#333333', height=2)
+                separator.pack(fill=tk.X, pady=10)
+        
+        # Small hint at bottom (can be removed for production)
+        hint_label = tk.Label(
+            self.window,
+            text="Press F5 on main window to close | Press F11 to toggle fullscreen",
+            font=font.Font(family="Arial", size=10),
+            fg='#444444',
+            bg='black'
+        )
+        hint_label.pack(side=tk.BOTTOM, pady=5)
+        
+        # Bind F11 for fullscreen toggle on this window
+        self.window.bind('<F11>', self.toggle_fullscreen)
+        self.is_fullscreen = False
+        
+        # Bind Escape to exit fullscreen
+        self.window.bind('<Escape>', self.exit_fullscreen)
+    
+    def _position_on_second_monitor(self, parent_root):
+        """Try to position window on second monitor if available"""
+        # Get primary monitor dimensions
+        primary_width = parent_root.winfo_screenwidth()
+        primary_height = parent_root.winfo_screenheight()
+        
+        # Try to detect if there's extended desktop space
+        # This is a heuristic - Tkinter doesn't have great multi-monitor support
+        # We'll position the window to the right of the primary monitor
+        
+        # Start with a large window size
+        window_width = int(primary_width * 0.8)
+        window_height = int(primary_height * 0.6)
+        
+        # Position: try second monitor (right of primary)
+        # If no second monitor, this will just be off-screen and user can drag it
+        x_position = primary_width + 50  # Just past the primary monitor
+        y_position = 50
+        
+        # Set geometry
+        self.window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+        
+        # If window ends up off-screen (no second monitor), center on primary
+        self.window.update_idletasks()
+        actual_x = self.window.winfo_x()
+        
+        # If the window is positioned beyond reasonable bounds, center it
+        if actual_x > primary_width * 2 or actual_x < 0:
+            # Fall back to centering on primary monitor
+            x_position = (primary_width - window_width) // 2
+            y_position = (primary_height - window_height) // 2
+            self.window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+            print("    Note: No second monitor detected - drag window to congregation display")
+    
+    def toggle_fullscreen(self, event=None):
+        """Toggle fullscreen mode"""
+        self.is_fullscreen = not self.is_fullscreen
+        self.window.attributes('-fullscreen', self.is_fullscreen)
+        if self.is_fullscreen:
+            print(f"    📺 Presentation: FULLSCREEN mode")
+        else:
+            print(f"    📺 Presentation: WINDOWED mode")
+    
+    def exit_fullscreen(self, event=None):
+        """Exit fullscreen mode"""
+        if self.is_fullscreen:
+            self.is_fullscreen = False
+            self.window.attributes('-fullscreen', False)
+    
+    def update_text(self, translations, is_interim=False):
+        """Update displayed text
+        
+        Args:
+            translations: List of translated texts (one per language)
+            is_interim: Whether this is interim (incomplete) text
+        """
+        color = '#aaaaaa' if is_interim else 'white'
+        text_font = self.display_font_italic if is_interim else self.display_font
+        
+        for i, text_label in enumerate(self.lang_texts):
+            text = translations[i] if i < len(translations) else ""
+            text_label.config(text=text, fg=color, font=text_font)
+    
+    def set_font_size(self, size):
+        """Update font size (synced from main window)"""
+        self.font_size = size
+        self.display_font.configure(size=size)
+        self.display_font_italic.configure(size=size)
+    
+    def clear_display(self):
+        """Clear all text"""
+        for text_label in self.lang_texts:
+            text_label.config(text="")
+    
+    def close(self):
+        """Close the presentation window"""
+        try:
+            self.window.destroy()
+        except:
+            pass
 
 
 # =============================================================================
@@ -1317,20 +1544,69 @@ class AudioStreamer:
     
     def __init__(self, device_index=None):
         self.audio = pyaudio.PyAudio()
-        self.device_index = device_index or self._find_usb_device()
+        self.device_index = device_index if device_index is not None else self._find_input_device()
         self.audio_queue = queue.Queue()
         self.is_recording = False
         
-    def _find_usb_device(self):
-        print("\nAvailable audio devices:")
+    def _find_input_device(self):
+        """Find a valid input device, prioritizing USB devices"""
+        print("\n🎤 Scanning audio devices...")
+        
+        usb_devices = []
+        input_devices = []
+        default_input = None
+        
+        # Get default input device info
+        try:
+            default_info = self.audio.get_default_input_device_info()
+            default_input = default_info['index']
+            print(f"   Default input device: [{default_input}] {default_info['name']}")
+        except OSError:
+            print("   ⚠️ No default input device found")
+        
+        print("\n   Available INPUT devices:")
         for i in range(self.audio.get_device_count()):
-            info = self.audio.get_device_info_by_index(i)
-            print(f"  [{i}] {info['name']}")
-            if "USB" in info['name'] or "Focusrite" in info['name']:
-                print(f"OK - Found USB device: {info['name']}")
-                return i
-        print("⚠ USB device not found, using default input")
-        return None
+            try:
+                info = self.audio.get_device_info_by_index(i)
+                # Only consider devices with input channels
+                if info['maxInputChannels'] > 0:
+                    name = info['name']
+                    channels = info['maxInputChannels']
+                    rate = int(info['defaultSampleRate'])
+                    
+                    # Check if it's a USB device
+                    is_usb = any(x in name.lower() for x in ['usb', 'focusrite', 'scarlett', 'behringer', 'audio interface'])
+                    
+                    marker = "🔌 USB" if is_usb else "   "
+                    default_marker = " (DEFAULT)" if i == default_input else ""
+                    print(f"   {marker} [{i}] {name} - {channels}ch @ {rate}Hz{default_marker}")
+                    
+                    input_devices.append((i, name, is_usb))
+                    if is_usb:
+                        usb_devices.append((i, name))
+            except OSError as e:
+                continue
+        
+        if not input_devices:
+            print("\n   ❌ ERROR: No input devices found!")
+            print("   Please check:")
+            print("   1. Is your microphone/audio interface connected?")
+            print("   2. Is it recognized by Windows? (Check Sound Settings)")
+            print("   3. Are audio drivers installed?")
+            return None
+        
+        # Priority: USB device > Default input > First available input
+        if usb_devices:
+            chosen = usb_devices[0]
+            print(f"\n   ✅ Selected USB device: [{chosen[0]}] {chosen[1]}")
+            return chosen[0]
+        elif default_input is not None:
+            print(f"\n   ✅ Using default input device: [{default_input}]")
+            return default_input
+        else:
+            chosen = input_devices[0]
+            print(f"\n   ✅ Using first available input: [{chosen[0]}] {chosen[1]}")
+            return chosen[0]
     
     def _audio_callback(self, in_data, frame_count, time_info, status):
         if self.is_recording:
@@ -1338,18 +1614,30 @@ class AudioStreamer:
         return (in_data, pyaudio.paContinue)
     
     def start_stream(self):
+        if self.device_index is None:
+            raise RuntimeError("No valid input device found. Please connect a microphone.")
+        
         self.is_recording = True
-        self.stream = self.audio.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            input=True,
-            input_device_index=self.device_index,
-            frames_per_buffer=CHUNK,
-            stream_callback=self._audio_callback
-        )
-        self.stream.start_stream()
-        print("\n🎤 Audio streaming started...")
+        try:
+            self.stream = self.audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                input_device_index=self.device_index,
+                frames_per_buffer=CHUNK,
+                stream_callback=self._audio_callback
+            )
+            self.stream.start_stream()
+            print("\n🎤 Audio streaming started...")
+        except OSError as e:
+            self.is_recording = False
+            print(f"\n❌ Failed to open audio stream: {e}")
+            print("\nTroubleshooting:")
+            print("1. Check if another application is using the microphone")
+            print("2. Try selecting a different device manually")
+            print("3. Restart the application")
+            raise
     
     def stop_stream(self):
         self.is_recording = False
@@ -1384,6 +1672,7 @@ class AudioFileStreamer:
         self.max_duration = max_duration
         self.audio_queue = queue.Queue()
         self.is_recording = False
+        self.is_paused = False  # Pause flag for STOP/START control
         self.is_finished = False
         
         # Temp file for converted audio
@@ -1564,6 +1853,15 @@ class AudioFileStreamer:
         total_bytes = len(self.audio_data)
         
         while offset < total_bytes and self.is_recording:
+            # Check if paused (STOP was pressed)
+            while self.is_paused and self.is_recording:
+                time.sleep(0.1)  # Wait while paused
+                # Reset stream_start when resuming so timestamps are correct
+                stream_start = datetime.now() - timedelta(seconds=audio_position)
+            
+            if not self.is_recording:
+                break
+            
             # Get chunk of audio data
             chunk = self.audio_data[offset:offset + chunk_bytes]
             
@@ -1587,7 +1885,7 @@ class AudioFileStreamer:
         # Mark as finished
         self.is_finished = True
         self.is_recording = False
-        print("\nOK - Audio file playback complete")
+        print("\n✅ Audio file playback complete")
     
     def stop_stream(self):
         """Stop streaming"""
@@ -1697,7 +1995,7 @@ class DualStreamManager:
         
         # Control flags
         self.is_running = False
-        self.is_paused = False
+        self.is_stopped = False
         
         # Threads
         self.stream_a_thread = None
@@ -1783,7 +2081,7 @@ class DualStreamManager:
         
         while self.is_running:
             try:
-                if self.is_paused:
+                if self.is_stopped:
                     time.sleep(0.5)
                     continue
                 
@@ -1791,7 +2089,7 @@ class DualStreamManager:
                 self.stream_a_restarting = False
                 
                 def request_generator():
-                    while self.is_running and not self.is_paused:
+                    while self.is_running and not self.is_stopped:
                         try:
                             chunk, timestamp = self.stream_a_queue.get(timeout=1)
                             if chunk is None:
@@ -1868,12 +2166,12 @@ class DualStreamManager:
         
         while self.is_running:
             try:
-                if self.is_paused:
+                if self.is_stopped:
                     time.sleep(0.5)
                     continue
                 
                 def request_generator():
-                    while self.is_running and not self.is_paused:
+                    while self.is_running and not self.is_stopped:
                         try:
                             chunk, timestamp = self.stream_b_queue.get(timeout=1)
                             if chunk is None:
@@ -2486,7 +2784,8 @@ class TestHarnessSystem:
     
     def __init__(self, source_language, target_languages, display_languages, test_mode: int,
                  audio_source: str = "microphone", audio_file_path: str = None, 
-                 playback_speed: float = 1.0, max_duration: float = None):
+                 playback_speed: float = 1.0, max_duration: float = None,
+                 auto_start: bool = False):
         """
         Initialize test harness
         
@@ -2499,6 +2798,7 @@ class TestHarnessSystem:
             audio_file_path: Path to audio file (if audio_source is "file")
             playback_speed: Playback speed multiplier (1.0 = real-time)
             max_duration: Maximum audio duration in seconds (None = full file)
+            auto_start: If True, start immediately without waiting for Ctrl+Shift+R
         """
         # Credentials
         creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 
@@ -2518,6 +2818,9 @@ class TestHarnessSystem:
         self.playback_speed = playback_speed
         self.max_duration = max_duration
         
+        # Auto-start flag
+        self.auto_start = auto_start
+        
         # Test mode configuration
         self.test_mode = test_mode
         self.test_config = TEST_MODES[test_mode]
@@ -2535,10 +2838,10 @@ class TestHarnessSystem:
         self.csv_file = None
         self.csv_writer = None
         
-        # Pause control
-        self.is_paused = True
-        self.is_hard_paused = False  # Hard pause = full stop, no API calls
-        self.pause_start_time = None
+        # Stop control - start in STOPPED state unless auto_start is True
+        # When stopped: no listening, no translation, no queuing
+        self.is_stopped = not auto_start
+        self.stop_start_time = None
         self.total_pause_time = 0
         self.active_start_time = None
         self.total_active_time = 0
@@ -2555,15 +2858,13 @@ class TestHarnessSystem:
         if audio_source == "file":
             self._add_progress_bar()
         
-        # Keyboard bindings
-        self.display.root.bind('<Control-Shift-P>', self._pause)       # Soft pause
-        self.display.root.bind('<Control-Shift-p>', self._pause)
-        self.display.root.bind('<Control-Shift-X>', self._hard_pause)  # Hard pause (full stop)
-        self.display.root.bind('<Control-Shift-x>', self._hard_pause)
-        self.display.root.bind('<Control-Shift-R>', self._resume)      # Resume from either
-        self.display.root.bind('<Control-Shift-r>', self._resume)
-        self.display.root.bind('<Control-Shift-S>', self._stop)        # Stop test
-        self.display.root.bind('<Control-Shift-s>', self._stop)
+        # Keyboard bindings - Simple START/STOP only
+        self.display.root.bind('<Control-Shift-R>', self._start_translation)  # START translation
+        self.display.root.bind('<Control-Shift-r>', self._start_translation)
+        self.display.root.bind('<Control-Shift-S>', self._stop_translation)   # STOP translation (can resume)
+        self.display.root.bind('<Control-Shift-s>', self._stop_translation)
+        self.display.root.bind('<Control-Shift-Q>', self._quit_test)          # QUIT test entirely
+        self.display.root.bind('<Control-Shift-q>', self._quit_test)
         
         # Initialize appropriate audio streamer
         if audio_source == "file":
@@ -2691,42 +2992,60 @@ class TestHarnessSystem:
                 self.progress_bar, 0, 0, w, 12
             ))
     
-    def _pause(self, event=None):
-        """Soft Pause - stops display but queue continues building"""
-        if not self.is_paused:
-            self.is_paused = True
-            self.is_hard_paused = False  # Soft pause
-            self.pause_start_time = datetime.now()
-            self.display.set_paused(True, hard=False)
+    def _start_translation(self, event=None):
+        """START - Begin listening, translating, and displaying"""
+        if self.is_stopped:
+            self.is_stopped = False
+            self.active_start_time = datetime.now()
+            self.display.set_stopped(False)
+            
+            # Resume the audio streamer
+            if hasattr(self, 'audio_streamer') and self.audio_streamer:
+                # For microphone: set is_recording = True
+                if hasattr(self.audio_streamer, 'is_recording'):
+                    self.audio_streamer.is_recording = True
+                # For audio file: unpause the streaming thread
+                if hasattr(self.audio_streamer, 'is_paused'):
+                    self.audio_streamer.is_paused = False
+            
+            if self.stop_start_time:
+                self.total_pause_time += (datetime.now() - self.stop_start_time).total_seconds()
+            
+            print(f"\n▶️  [{datetime.now().strftime('%H:%M:%S')}] STARTED - Listening and translating")
+    
+    def _stop_translation(self, event=None):
+        """STOP - Stop all listening, translation, and clear queues. Can resume with Ctrl+Shift+R"""
+        if not self.is_stopped:
+            self.is_stopped = True
+            self.stop_start_time = datetime.now()
+            self.display.set_stopped(True)
             
             if self.active_start_time:
                 self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
             
-            print(f"\n⏸️  [{datetime.now().strftime('%H:%M:%S')}] SOFT PAUSED (queue still building)")
-            print(f"    Press Ctrl+Shift+R to resume, or Ctrl+Shift+X for hard stop")
-    
-    def _hard_pause(self, event=None):
-        """Hard Pause - full stop, no API calls, clears queues"""
-        if not self.is_paused or not self.is_hard_paused:
-            was_soft_paused = self.is_paused and not getattr(self, 'is_hard_paused', False)
+            # Stop/pause the audio streamer
+            if hasattr(self, 'audio_streamer') and self.audio_streamer:
+                # For microphone: stop recording completely
+                if hasattr(self.audio_streamer, 'is_recording') and self.audio_source == "microphone":
+                    self.audio_streamer.is_recording = False
+                # For audio file: pause the streaming thread (don't stop completely)
+                if hasattr(self.audio_streamer, 'is_paused'):
+                    self.audio_streamer.is_paused = True
             
-            self.is_paused = True
-            self.is_hard_paused = True
-            self.pause_start_time = datetime.now() if not was_soft_paused else self.pause_start_time
-            self.display.set_paused(True, hard=True)
-            
-            if self.active_start_time and not was_soft_paused:
-                self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
-            
-            # Clear queues to stop all data flow
+            # Clear all queues to stop all data flow
             queues_cleared = self._clear_all_queues()
             
-            print(f"\n⏹️  [{datetime.now().strftime('%H:%M:%S')}] HARD STOPPED")
-            print(f"    Audio streaming: STOPPED")
-            print(f"    Translation API: STOPPED")
+            print(f"\n⏹️  [{datetime.now().strftime('%H:%M:%S')}] STOPPED")
+            print(f"    Audio streaming: PAUSED")
+            print(f"    Translation API: STOPPED") 
             print(f"    Display queue: CLEARED ({queues_cleared['display']} items)")
             print(f"    Audio buffer: CLEARED ({queues_cleared['audio']} chunks)")
-            print(f"    Press Ctrl+Shift+R to resume fresh")
+            print(f"    Press Ctrl+Shift+R to resume")
+    
+    def _quit_test(self, event=None):
+        """QUIT - End the test entirely and generate reports"""
+        print("\n🛑 Ending test...")
+        self.display.stop()
     
     def _clear_all_queues(self):
         """Clear all queues and buffers for hard pause"""
@@ -2765,28 +3084,6 @@ class TestHarnessSystem:
         self.interim_text_displayed = ""
         
         return cleared
-    
-    def _resume(self, event=None):
-        """Resume from either soft or hard pause"""
-        if self.is_paused:
-            was_hard_paused = getattr(self, 'is_hard_paused', False)
-            
-            self.is_paused = False
-            self.is_hard_paused = False
-            self.active_start_time = datetime.now()
-            self.display.set_paused(False, hard=False)
-            
-            if self.pause_start_time:
-                self.total_pause_time += (datetime.now() - self.pause_start_time).total_seconds()
-            
-            if was_hard_paused:
-                print(f"\n▶️  [{datetime.now().strftime('%H:%M:%S')}] RESUMED (fresh start)")
-            else:
-                print(f"\n▶️  [{datetime.now().strftime('%H:%M:%S')}] RESUMED")
-    
-    def _stop(self, event=None):
-        print("\n🛑 Stopping test...")
-        self.display.stop()
     
     def translate_to_multiple(self, text, use_context=True):
         """Translate text to all target languages
@@ -3746,18 +4043,28 @@ If you see many HIGH severity items, consider:
         audio_thread = threading.Thread(target=self._audio_processing, daemon=True)
         audio_thread.start()
         
-        print(f"\n🎬 Test started!")
+        print(f"\n🎬 Test ready!")
         
         if self.audio_source == "file":
             if self.max_duration:
                 print(f"   Will process first {self.max_duration/60:.0f} minutes of audio")
-            print(f"   Audio file will play automatically when you press Ctrl+Shift+R")
-            print(f"   Test will auto-complete when audio finishes")
-        
-        print(f"   Press Ctrl+Shift+R to begin")
-        print(f"   Press Ctrl+Shift+S to stop\n")
-        
-        self.display.set_paused(True)
+            
+            # Auto-start mode: start immediately without keyboard input
+            if getattr(self, 'auto_start', False):
+                print(f"   🚀 AUTO-START ENABLED - Beginning immediately...")
+                self.is_stopped = False
+                self.active_start_time = datetime.now()
+                self.display.set_stopped(False)
+            else:
+                print(f"\n   ⏹️  STOPPED - Waiting to start")
+                print(f"   Press Ctrl+Shift+R to START")
+                print(f"   Press Ctrl+Shift+Q to QUIT\n")
+                self.display.set_stopped(True)
+        else:
+            print(f"\n   ⏹️  STOPPED - Waiting to start")
+            print(f"   Press Ctrl+Shift+R to START")
+            print(f"   Press Ctrl+Shift+Q to QUIT\n")
+            self.display.set_stopped(True)
         
         try:
             self.display.run()
@@ -3839,18 +4146,18 @@ If you see many HIGH severity items, consider:
                         
                         time.sleep(2)
                         dual_manager.stop()
-                        self.display.root.after(0, self._stop)
+                        self.display.root.after(0, self._quit_test)
                         break
                     else:
                         time.sleep(0.5)
                         continue
             
-            if self.is_paused:
-                dual_manager.is_paused = True
+            if self.is_stopped:
+                dual_manager.is_stopped = True
                 time.sleep(0.5)
                 continue
             else:
-                dual_manager.is_paused = False
+                dual_manager.is_stopped = False
             
             # Get next result from dual stream manager
             result = dual_manager.get_next_result(timeout=0.5)
@@ -3884,7 +4191,7 @@ If you see many HIGH severity items, consider:
             self.last_segment_time = timestamp_recognized
             
             # Skip if hard paused
-            if self.is_hard_paused:
+            if self.is_stopped:
                 print(f"   [HARD PAUSED] Skipping segment {original_segment_id}")
                 continue
             
@@ -4077,6 +4384,20 @@ If you see many HIGH severity items, consider:
                 single_utterance=False
             )
         
+        # ============================================================
+        # WAIT FOR START before beginning audio streaming
+        # This prevents audio from buffering while in STOPPED state
+        # ============================================================
+        if self.is_stopped:
+            print(f"\n   ⏸️  Waiting for START (Ctrl+Shift+R) before streaming audio...")
+            while self.is_stopped and self.display.is_running:
+                time.sleep(0.1)
+            
+            if not self.display.is_running:
+                return  # User quit before starting
+            
+            print(f"   ▶️  START received - beginning audio stream")
+        
         self.audio_streamer.start_stream()
         
         # Track streaming statistics
@@ -4111,13 +4432,13 @@ If you see many HIGH severity items, consider:
                         print(f"   (This is your actual real-world latency)")
                         
                         time.sleep(2)  # Brief pause to show final translation
-                        self.display.root.after(0, self._stop)
+                        self.display.root.after(0, self._quit_test)
                         break
                     else:
                         time.sleep(0.5)
                         continue
             
-            if self.is_paused:
+            if self.is_stopped:
                 time.sleep(0.5)
                 continue
             
@@ -4127,7 +4448,7 @@ If you see many HIGH severity items, consider:
                 
                 def request_generator():
                     for chunk, timestamp in self.audio_streamer.audio_generator():
-                        if not self.display.is_running or self.is_paused:
+                        if not self.display.is_running or self.is_stopped:
                             break
                         # For file source, check if finished
                         if self.audio_source == "file" and hasattr(self.audio_streamer, 'is_finished'):
@@ -4141,7 +4462,7 @@ If you see many HIGH severity items, consider:
                 )
                 
                 for response in responses:
-                    if not self.display.is_running or self.is_paused:
+                    if not self.display.is_running or self.is_stopped:
                         break
                     
                     for result in response.results:
@@ -4292,7 +4613,7 @@ If you see many HIGH severity items, consider:
                         self.last_segment_time = timestamp_recognized
                         
                         # Skip translation if hard paused (no API calls during hard pause)
-                        if self.is_hard_paused:
+                        if self.is_stopped:
                             print(f"   [HARD PAUSED] Skipping translation for segment {original_segment_id}")
                             continue
                         
@@ -4420,7 +4741,7 @@ If you see many HIGH severity items, consider:
                     if self.audio_source == "file" and hasattr(self.audio_streamer, 'is_finished'):
                         if self.audio_streamer.is_finished:
                             continue
-                    if not self.is_paused:
+                    if not self.is_stopped:
                         self.stream_restart_count += 1
                         restart_time = datetime.now()
                         
@@ -4529,7 +4850,7 @@ If you see many HIGH severity items, consider:
         
         self.session.end_time = datetime.now()
         
-        if self.active_start_time and not self.is_paused:
+        if self.active_start_time and not self.is_stopped:
             self.total_active_time += (datetime.now() - self.active_start_time).total_seconds()
         
         # ============================================================
@@ -5660,6 +5981,349 @@ def configure_languages():
 
 
 # =============================================================================
+# BATCH TESTING MODE
+# =============================================================================
+
+def select_multiple_audio_files():
+    """Select multiple audio files for batch testing"""
+    print("\n" + "="*70)
+    print("    BATCH TEST - SELECT AUDIO FILES")
+    print("="*70)
+    
+    selected_files = []
+    
+    if os.path.exists(DEFAULT_AUDIO_FOLDER):
+        files = [f for f in os.listdir(DEFAULT_AUDIO_FOLDER) 
+                if f.lower().endswith(('.mp3', '.wav'))]
+        
+        if files:
+            print(f"\nAvailable audio files in: {DEFAULT_AUDIO_FOLDER}")
+            print("-"*70)
+            for i, f in enumerate(files, 1):
+                size = os.path.getsize(os.path.join(DEFAULT_AUDIO_FOLDER, f))
+                size_mb = size / (1024 * 1024)
+                print(f"  {i}. {f} ({size_mb:.1f} MB)")
+            
+            print("\n" + "-"*70)
+            print("Enter file numbers separated by commas (e.g., 1,3,5)")
+            print("Or enter 'A' to select ALL files")
+            print("Or enter 'B' to browse for files")
+            
+            while True:
+                choice = input("\nSelect files: ").strip().upper()
+                
+                if choice == 'A':
+                    # Select all files
+                    selected_files = [os.path.join(DEFAULT_AUDIO_FOLDER, f) for f in files]
+                    break
+                elif choice == 'B':
+                    # Browse for multiple files
+                    try:
+                        root = tk.Tk()
+                        root.withdraw()
+                        file_paths = filedialog.askopenfilenames(
+                            title="Select Audio Files (hold Ctrl to select multiple)",
+                            initialdir=DEFAULT_AUDIO_FOLDER,
+                            filetypes=[
+                                ("Audio files", "*.mp3 *.wav"),
+                                ("MP3 files", "*.mp3"),
+                                ("WAV files", "*.wav"),
+                            ]
+                        )
+                        root.destroy()
+                        if file_paths:
+                            selected_files = list(file_paths)
+                            break
+                        else:
+                            print("No files selected.")
+                    except Exception as e:
+                        print(f"ERROR: File browser error: {e}")
+                else:
+                    # Parse comma-separated numbers
+                    try:
+                        indices = [int(x.strip()) - 1 for x in choice.split(',')]
+                        valid = True
+                        for idx in indices:
+                            if idx < 0 or idx >= len(files):
+                                print(f"ERROR: Invalid number {idx + 1}")
+                                valid = False
+                                break
+                        if valid:
+                            selected_files = [os.path.join(DEFAULT_AUDIO_FOLDER, files[idx]) for idx in indices]
+                            break
+                    except ValueError:
+                        print("ERROR: Enter numbers separated by commas (e.g., 1,3,5)")
+        else:
+            print("No audio files found in default folder.")
+    else:
+        print(f"Default folder not found: {DEFAULT_AUDIO_FOLDER}")
+    
+    # If no files selected yet, allow manual entry
+    if not selected_files:
+        print("\nEnter file paths one per line. Enter empty line when done:")
+        while True:
+            path = input("  Path (or Enter to finish): ").strip()
+            if not path:
+                break
+            if os.path.exists(path):
+                selected_files.append(path)
+                print(f"    ✓ Added: {os.path.basename(path)}")
+            else:
+                print(f"    ✗ File not found: {path}")
+    
+    return selected_files
+
+
+def run_batch_test():
+    """Run batch testing on multiple audio files"""
+    print("\n" + "="*70)
+    print("    BATCH TESTING MODE")
+    print("="*70)
+    print("\nThis mode allows you to queue multiple audio files for testing.")
+    print("Each file will generate its own complete set of output files.")
+    
+    # 1. Select mode
+    print("\n" + "-"*70)
+    print("STEP 1: Select Test Mode")
+    print("-"*70)
+    
+    print("\nAvailable modes:")
+    for mode_num, config in TEST_MODES.items():
+        print(f"  {mode_num}. {config['name']}")
+    
+    while True:
+        mode_choice = input("\nEnter mode number: ").strip()
+        try:
+            test_mode = int(mode_choice)
+            if test_mode in TEST_MODES:
+                break
+            print("ERROR: Invalid mode number.")
+        except ValueError:
+            print("ERROR: Enter a number.")
+    
+    print(f"\n✓ Selected: Mode {test_mode} - {TEST_MODES[test_mode]['name']}")
+    
+    # 2. Select audio files
+    print("\n" + "-"*70)
+    print("STEP 2: Select Audio Files")
+    print("-"*70)
+    
+    selected_files = select_multiple_audio_files()
+    
+    if not selected_files:
+        print("\nERROR: No files selected. Returning to main menu.")
+        return
+    
+    print(f"\n✓ Selected {len(selected_files)} file(s):")
+    for i, f in enumerate(selected_files, 1):
+        print(f"    {i}. {os.path.basename(f)}")
+    
+    # 3. Duration limit
+    print("\n" + "-"*70)
+    print("STEP 3: Duration Limit (applies to ALL files)")
+    print("-"*70)
+    print("\n  1. Use full file (no limit)")
+    print("  2. First 15 minutes only")
+    print("  3. First 30 minutes")
+    print("  4. First 45 minutes")
+    print("  5. Custom duration")
+    
+    while True:
+        duration_choice = input("\nSelect duration (1-5) [default: 2]: ").strip()
+        
+        if duration_choice == "" or duration_choice == "2":
+            max_duration = 15 * 60
+            duration_desc = "15 minutes"
+            break
+        elif duration_choice == "1":
+            max_duration = None
+            duration_desc = "Full file"
+            break
+        elif duration_choice == "3":
+            max_duration = 30 * 60
+            duration_desc = "30 minutes"
+            break
+        elif duration_choice == "4":
+            max_duration = 45 * 60
+            duration_desc = "45 minutes"
+            break
+        elif duration_choice == "5":
+            custom = input("Enter duration in minutes: ").strip()
+            try:
+                max_duration = float(custom) * 60
+                duration_desc = f"{float(custom):.0f} minutes"
+                break
+            except ValueError:
+                print("ERROR: Invalid number.")
+        else:
+            print("ERROR: Invalid choice.")
+    
+    print(f"\n✓ Duration limit: {duration_desc}")
+    
+    # 4. Configure languages (same for all)
+    print("\n" + "-"*70)
+    print("STEP 4: Language Configuration")
+    print("-"*70)
+    
+    source_lang, target_langs, display_langs = configure_languages()
+    
+    # 5. Confirmation
+    print("\n" + "="*70)
+    print("    BATCH TEST CONFIGURATION SUMMARY")
+    print("="*70)
+    print(f"\nTest Mode:      {test_mode} - {TEST_MODES[test_mode]['name']}")
+    print(f"Duration Limit: {duration_desc}")
+    print(f"Input Language: {source_lang[1]}")
+    print(f"Output:         {', '.join([l[1] for l in target_langs])}")
+    print(f"\nFiles to process ({len(selected_files)}):")
+    
+    total_estimated_time = 0
+    for i, f in enumerate(selected_files, 1):
+        print(f"  {i}. {os.path.basename(f)}")
+        if max_duration:
+            total_estimated_time += max_duration / 60
+        else:
+            # Estimate 60 minutes per file if full
+            total_estimated_time += 60
+    
+    print(f"\nEstimated total time: ~{total_estimated_time:.0f} minutes")
+    print("="*70)
+    
+    confirm = input("\nStart batch test? (Y/n): ").strip().lower()
+    if confirm == 'n':
+        print("Cancelled.")
+        return
+    
+    # 6. Run batch
+    print("\n" + "="*70)
+    print("    STARTING BATCH TEST")
+    print("="*70)
+    
+    batch_start_time = datetime.now()
+    batch_results = []
+    
+    for file_num, file_path in enumerate(selected_files, 1):
+        print(f"\n{'='*70}")
+        print(f"  PROCESSING FILE {file_num} OF {len(selected_files)}")
+        print(f"  {os.path.basename(file_path)}")
+        print(f"{'='*70}\n")
+        
+        file_start_time = datetime.now()
+        
+        try:
+            # Create and run system for this file with AUTO-START enabled
+            system = TestHarnessSystem(
+                source_language=source_lang,
+                target_languages=target_langs,
+                display_languages=display_langs,
+                test_mode=test_mode,
+                audio_source="file",
+                audio_file_path=file_path,
+                playback_speed=1.0,  # Always use 1.0 for batch testing
+                max_duration=max_duration,
+                auto_start=True  # Auto-start without waiting for Ctrl+Shift+R
+            )
+            
+            # Start the system (this blocks until complete)
+            system.start()
+            
+            file_end_time = datetime.now()
+            file_duration = (file_end_time - file_start_time).total_seconds() / 60
+            
+            batch_results.append({
+                'file': os.path.basename(file_path),
+                'status': 'SUCCESS',
+                'duration_minutes': file_duration,
+                'segments': len(system.session.segments),
+            })
+            
+            print(f"\n✅ Completed: {os.path.basename(file_path)}")
+            print(f"   Duration: {file_duration:.1f} minutes")
+            print(f"   Segments: {len(system.session.segments)}")
+            
+        except Exception as e:
+            print(f"\n❌ ERROR processing {os.path.basename(file_path)}: {e}")
+            batch_results.append({
+                'file': os.path.basename(file_path),
+                'status': f'FAILED: {str(e)[:50]}',
+                'duration_minutes': 0,
+                'segments': 0,
+            })
+            # Continue to next file
+            continue
+        
+        # Brief pause between files
+        if file_num < len(selected_files):
+            print(f"\n⏳ Starting next file in 5 seconds...")
+            print(f"   Remaining: {len(selected_files) - file_num} file(s)")
+            time.sleep(5)
+    
+    # 7. Batch complete - generate summary
+    batch_end_time = datetime.now()
+    total_duration = (batch_end_time - batch_start_time).total_seconds() / 60
+    
+    print("\n" + "="*70)
+    print("    BATCH TEST COMPLETE")
+    print("="*70)
+    print(f"\nTotal time: {total_duration:.1f} minutes")
+    print(f"Files processed: {len(batch_results)}")
+    
+    successful = sum(1 for r in batch_results if r['status'] == 'SUCCESS')
+    failed = len(batch_results) - successful
+    
+    print(f"  Successful: {successful}")
+    print(f"  Failed: {failed}")
+    
+    print("\n" + "-"*70)
+    print("RESULTS BY FILE:")
+    print("-"*70)
+    
+    for i, result in enumerate(batch_results, 1):
+        status_icon = "✅" if result['status'] == 'SUCCESS' else "❌"
+        print(f"  {i}. {status_icon} {result['file']}")
+        print(f"       Status: {result['status']}")
+        if result['status'] == 'SUCCESS':
+            print(f"       Duration: {result['duration_minutes']:.1f} min, Segments: {result['segments']}")
+    
+    # Save batch summary
+    batch_summary_file = f"test_results/batch_summary_{batch_end_time.strftime('%Y%m%d_%H%M%S')}.txt"
+    os.makedirs("test_results", exist_ok=True)
+    
+    with open(batch_summary_file, 'w', encoding='utf-8') as f:
+        f.write("="*70 + "\n")
+        f.write("BATCH TEST SUMMARY\n")
+        f.write("="*70 + "\n\n")
+        f.write(f"Batch Start: {batch_start_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Batch End: {batch_end_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Total Duration: {total_duration:.1f} minutes\n\n")
+        f.write(f"Test Mode: {test_mode} - {TEST_MODES[test_mode]['name']}\n")
+        f.write(f"Duration Limit: {duration_desc}\n")
+        f.write(f"Input Language: {source_lang[1]}\n")
+        f.write(f"Output: {', '.join([l[1] for l in target_langs])}\n\n")
+        f.write("-"*70 + "\n")
+        f.write("FILES PROCESSED:\n")
+        f.write("-"*70 + "\n\n")
+        
+        for i, result in enumerate(batch_results, 1):
+            f.write(f"{i}. {result['file']}\n")
+            f.write(f"   Status: {result['status']}\n")
+            if result['status'] == 'SUCCESS':
+                f.write(f"   Duration: {result['duration_minutes']:.1f} minutes\n")
+                f.write(f"   Segments: {result['segments']}\n")
+            f.write("\n")
+        
+        f.write("="*70 + "\n")
+        f.write(f"TOTAL: {successful} successful, {failed} failed\n")
+        f.write("="*70 + "\n")
+    
+    print(f"\nBatch summary saved to: {batch_summary_file}")
+    print("\nIndividual test results are in the test_results/ folder.")
+    print("="*70)
+    
+    input("\nPress Enter to continue...")
+
+
+# =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
 
@@ -5675,6 +6339,28 @@ if __name__ == "__main__":
         print("   Install with: winget install ffmpeg")
         print("   Or download from: https://ffmpeg.org/download.html")
         print("   (WAV files will still work)")
+    
+    # Main menu with batch option
+    print("\n" + "-"*70)
+    print("SELECT TESTING MODE:")
+    print("-"*70)
+    print("\n  1. Single File Test (standard)")
+    print("  2. Batch Test (multiple files, queue and walk away)")
+    
+    while True:
+        main_choice = input("\nSelect (1-2) [default: 1]: ").strip()
+        
+        if main_choice == "" or main_choice == "1":
+            # Standard single file flow
+            break
+        elif main_choice == "2":
+            # Batch testing mode
+            run_batch_test()
+            exit(0)
+        else:
+            print("ERROR: Enter 1 or 2.")
+    
+    # Standard single file test flow continues below...
     
     # Select test mode
     test_mode = select_test_mode()
@@ -5705,8 +6391,10 @@ if __name__ == "__main__":
     print("="*70)
     
     if audio_source == "file":
-        print("\n📌 NOTE: Test will run automatically and stop when audio completes.")
-        print("   Press Ctrl+Shift+R to start, or Ctrl+Shift+S to stop early.")
+        print("\n📌 KEYBOARD CONTROLS:")
+        print("   Ctrl+Shift+R  = START (begin listening/translating)")
+        print("   Ctrl+Shift+S  = STOP (stop all, can restart)")
+        print("   Ctrl+Shift+Q  = QUIT (end test completely)")
     
     confirm = input("\nStart test? (Y/n): ").strip().lower()
     if confirm == 'n':
