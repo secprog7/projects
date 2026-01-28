@@ -445,6 +445,10 @@ TEST_MODES = {
         # Quality reporting
         "generate_difference_report": False,
         "generate_glossary_report": True,
+        # === AUDIO REPLAY BUFFER (Option 3) ===
+        # Buffer audio locally during stream restarts, then replay to recover lost content
+        "audio_replay_buffer_enabled": True,
+        "audio_replay_buffer_seconds": 90,  # Keep last 90 seconds of audio
     },
     16: {
         "name": "Overlap Coverage (Primary-Backup)",
@@ -838,6 +842,142 @@ class TestSession:
     def min_latency(self) -> float:
         latencies = [s.latency_total for s in self.segments if s.latency_total]
         return min(latencies) if latencies else 0
+
+
+# =============================================================================
+# AUDIO REPLAY BUFFER (Option 3 - Restart Recovery)
+# =============================================================================
+
+class AudioReplayBuffer:
+    """
+    Rolling buffer that stores recent audio chunks for replay during stream restarts.
+    
+    When Google Speech API stream times out (~5 min limit), audio spoken during
+    the restart gap is normally lost. This buffer captures audio continuously
+    and can replay it to a new stream to recover that lost content.
+    
+    Architecture:
+    - Audio chunks are stored with timestamps in a rolling deque
+    - On stream restart, chunks since last successful recognition are replayed
+    - After replay, normal streaming resumes
+    """
+    
+    def __init__(self, buffer_seconds: float = 90, sample_rate: int = 16000, channels: int = 1):
+        """
+        Initialize the replay buffer.
+        
+        Args:
+            buffer_seconds: How many seconds of audio to keep (default 90)
+            sample_rate: Audio sample rate (default 16000 Hz)
+            channels: Number of audio channels (default 1 = mono)
+        """
+        self.buffer_seconds = buffer_seconds
+        self.sample_rate = sample_rate
+        self.channels = channels
+        
+        # Calculate max chunks to store
+        # At 16kHz, 1024 samples per chunk = ~0.064 seconds per chunk
+        # 90 seconds / 0.064 = ~1406 chunks
+        self.chunk_duration = 1024 / sample_rate  # seconds per chunk
+        self.max_chunks = int(buffer_seconds / self.chunk_duration) + 100  # Add margin
+        
+        # Rolling buffer of (audio_bytes, timestamp) tuples
+        self.buffer = deque(maxlen=self.max_chunks)
+        
+        # Track the timestamp of the last successfully recognized audio
+        self.last_recognized_timestamp = None
+        
+        # Statistics
+        self.total_chunks_buffered = 0
+        self.total_replays = 0
+        self.total_chunks_replayed = 0
+        self.total_recovered_seconds = 0
+        
+        # Lock for thread safety
+        self.lock = threading.Lock()
+        
+        print(f"\n📼 Audio Replay Buffer initialized:")
+        print(f"   Buffer size: {buffer_seconds} seconds (~{self.max_chunks} chunks)")
+        print(f"   Memory usage: ~{(self.max_chunks * 2048) / (1024*1024):.1f} MB")
+    
+    def add_chunk(self, audio_bytes: bytes, timestamp: datetime):
+        """
+        Add an audio chunk to the buffer.
+        
+        Args:
+            audio_bytes: Raw audio data
+            timestamp: When this audio was captured/spoken
+        """
+        with self.lock:
+            self.buffer.append((audio_bytes, timestamp))
+            self.total_chunks_buffered += 1
+    
+    def mark_recognized(self, timestamp: datetime):
+        """
+        Mark that audio up to this timestamp has been successfully recognized.
+        This is called when we receive a FINAL result from Google.
+        
+        Args:
+            timestamp: Timestamp of the audio that was just recognized
+        """
+        with self.lock:
+            self.last_recognized_timestamp = timestamp
+    
+    def get_chunks_for_replay(self) -> List[tuple]:
+        """
+        Get audio chunks that need to be replayed after a stream restart.
+        
+        Returns chunks from after the last recognized timestamp to now.
+        These represent audio that was captured but not yet processed.
+        
+        Returns:
+            List of (audio_bytes, timestamp) tuples to replay
+        """
+        with self.lock:
+            if not self.buffer:
+                return []
+            
+            if self.last_recognized_timestamp is None:
+                # No recognition yet - don't replay (might be initial startup)
+                return []
+            
+            # Find chunks after the last recognized timestamp
+            chunks_to_replay = []
+            for audio_bytes, timestamp in self.buffer:
+                if timestamp > self.last_recognized_timestamp:
+                    chunks_to_replay.append((audio_bytes, timestamp))
+            
+            if chunks_to_replay:
+                self.total_replays += 1
+                self.total_chunks_replayed += len(chunks_to_replay)
+                replay_duration = len(chunks_to_replay) * self.chunk_duration
+                self.total_recovered_seconds += replay_duration
+                
+                print(f"\n🔄 [REPLAY BUFFER] Preparing replay:")
+                print(f"   Chunks to replay: {len(chunks_to_replay)}")
+                print(f"   Duration: {replay_duration:.1f} seconds")
+                print(f"   From: {chunks_to_replay[0][1].strftime('%H:%M:%S')}")
+                print(f"   To: {chunks_to_replay[-1][1].strftime('%H:%M:%S')}")
+            
+            return chunks_to_replay
+    
+    def clear(self):
+        """Clear the buffer (e.g., when test stops)"""
+        with self.lock:
+            self.buffer.clear()
+            self.last_recognized_timestamp = None
+    
+    def get_stats(self) -> dict:
+        """Get buffer statistics for reporting"""
+        return {
+            'buffer_seconds': self.buffer_seconds,
+            'total_chunks_buffered': self.total_chunks_buffered,
+            'total_replays': self.total_replays,
+            'total_chunks_replayed': self.total_chunks_replayed,
+            'total_recovered_seconds': self.total_recovered_seconds,
+            'current_buffer_size': len(self.buffer),
+            'current_buffer_duration': len(self.buffer) * self.chunk_duration,
+        }
 
 
 # =============================================================================
@@ -2913,6 +3053,16 @@ class TestHarnessSystem:
             print(f"   Hybrid Buffer: ENABLED (max {self.test_config.get('buffer_max_words', 50)} words, "
                   f"{self.test_config.get('buffer_timeout_seconds', 15.0)}s timeout)")
         
+        # Audio Replay Buffer (Option 3 - Restart Recovery)
+        self.audio_replay_buffer = None
+        if self.test_config.get('audio_replay_buffer_enabled', False):
+            buffer_seconds = self.test_config.get('audio_replay_buffer_seconds', 90)
+            self.audio_replay_buffer = AudioReplayBuffer(
+                buffer_seconds=buffer_seconds,
+                sample_rate=RATE,
+                channels=CHANNELS
+            )
+        
         # Translation logging and context tracking (NEW)
         self.translation_log = []  # List of (timestamp, source_text, translations_dict) tuples
         self.previous_chunks = deque(maxlen=3)  # Store last N chunks for context
@@ -3085,6 +3235,15 @@ class TestHarnessSystem:
         
         return cleared
     
+    def _is_punctuation_only(self, text):
+        """Check if text contains only punctuation/whitespace (invalid translation)"""
+        import string
+        if not text:
+            return True
+        # Remove all punctuation and whitespace
+        stripped = text.translate(str.maketrans('', '', string.punctuation + ' \t\n'))
+        return len(stripped) == 0
+    
     def translate_to_multiple(self, text, use_context=True):
         """Translate text to all target languages
         
@@ -3124,25 +3283,23 @@ class TestHarnessSystem:
                         translated_full = result['translatedText']
                         
                         # Try to extract text after ]]]
+                        extracted = ""
                         if ']]]' in translated_full:
-                            translations[lang_name] = translated_full.split(']]]')[-1].strip()
+                            extracted = translated_full.split(']]]')[-1].strip()
                         elif ']]' in translated_full:
                             # Fallback if one bracket was removed
-                            translations[lang_name] = translated_full.split(']]')[-1].strip()
+                            extracted = translated_full.split(']]')[-1].strip()
                         elif ']' in translated_full:
                             # Last resort - find last ]
                             parts = translated_full.rsplit(']', 1)
                             if len(parts) > 1:
-                                translations[lang_name] = parts[-1].strip()
-                            else:
-                                # Complete failure - translate without context
-                                result = self.translate_client.translate(
-                                    text, target_language=target_base,
-                                    source_language=source_base, format_='text', model='nmt'
-                                )
-                                translations[lang_name] = result['translatedText']
+                                extracted = parts[-1].strip()
+                        
+                        # If extraction resulted in empty or punctuation-only, translate without context
+                        if extracted and not self._is_punctuation_only(extracted):
+                            translations[lang_name] = extracted
                         else:
-                            # Brackets completely removed - translate without context
+                            # Empty/punctuation-only extraction - translate without context as fallback
                             result = self.translate_client.translate(
                                 text, target_language=target_base,
                                 source_language=source_base, format_='text', model='nmt'
@@ -3157,14 +3314,18 @@ class TestHarnessSystem:
                         )
                         # Extract only the part after the separator
                         translated_full = result['translatedText']
+                        extracted = ""
                         if '|||' in translated_full:
-                            translations[lang_name] = translated_full.split('|||')[-1].strip()
+                            extracted = translated_full.split('|||')[-1].strip()
                         elif '| |' in translated_full:
                             # Sometimes spaces get added
-                            translations[lang_name] = translated_full.split('| |')[-1].strip()
+                            extracted = translated_full.split('| |')[-1].strip()
+                        
+                        # If extraction resulted in empty or punctuation-only, translate without context
+                        if extracted and not self._is_punctuation_only(extracted):
+                            translations[lang_name] = extracted
                         else:
-                            # Fallback - separator was translated or removed
-                            # Re-translate without context to avoid showing duplicates
+                            # Fallback - separator was translated/removed or extraction empty/punctuation
                             result = self.translate_client.translate(
                                 text, target_language=target_base,
                                 source_language=source_base, format_='text', model='nmt'
@@ -4254,7 +4415,12 @@ If you see many HIGH severity items, consider:
                     # Log to file
                     if self.output_file:
                         self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Stream {stream_id} Segment {self.segment_counter} (chunk {chunk_num}/{len(original_chunks)})\n")
-                        self.output_file.write(f"  Text: {chunk_text}\n\n")
+                        # Log the first translation (usually English)
+                        first_lang = self.display_languages[0][1] if self.display_languages else None
+                        if first_lang and first_lang in chunk_translations:
+                            self.output_file.write(f"  Text: {chunk_translations[first_lang]}\n\n")
+                        else:
+                            self.output_file.write(f"  Text: {chunk_text}\n\n")
                         self.output_file.flush()
                     
                     self.segment_counter += 1
@@ -4295,7 +4461,12 @@ If you see many HIGH severity items, consider:
                     self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Stream {stream_id} Segment {segment.segment_id}\n")
                     self.output_file.write(f"  Latency: {segment.latency_recognition:.2f}s (recog) + {segment.latency_translation:.2f}s (trans)\n")
                     self.output_file.write(f"  Queue depth: {segment.queue_depth_at_queue}\n")
-                    self.output_file.write(f"  Text: {transcript}\n\n")
+                    # Log the first translation (usually English)
+                    first_lang = self.display_languages[0][1] if self.display_languages else None
+                    if first_lang and first_lang in translations:
+                        self.output_file.write(f"  Text: {translations[first_lang]}\n\n")
+                    else:
+                        self.output_file.write(f"  Text: {transcript}\n\n")
                     self.output_file.flush()
                 
                 print("-" * 50)
@@ -4455,6 +4626,11 @@ If you see many HIGH severity items, consider:
                             if self.audio_streamer.is_finished and self.audio_streamer.audio_queue.empty():
                                 break
                         self.last_audio_timestamp = timestamp
+                        
+                        # Store chunk in replay buffer for restart recovery
+                        if self.audio_replay_buffer is not None:
+                            self.audio_replay_buffer.add_chunk(chunk, timestamp)
+                        
                         yield speech.StreamingRecognizeRequest(audio_content=chunk)
                 
                 responses = self.speech_client.streaming_recognize(
@@ -4609,6 +4785,11 @@ If you see many HIGH severity items, consider:
                         timestamp_recognized = datetime.now()
                         original_word_count = len(transcript.split())
                         
+                        # Mark this audio as recognized in replay buffer
+                        # This tells the buffer we've successfully processed up to this point
+                        if self.audio_replay_buffer is not None and timestamp_spoken:
+                            self.audio_replay_buffer.mark_recognized(timestamp_spoken)
+                        
                         # Track last segment time for restart gap calculation
                         self.last_segment_time = timestamp_recognized
                         
@@ -4729,7 +4910,12 @@ If you see many HIGH severity items, consider:
                                 self.output_file.write(f"[{datetime.now().strftime('%H:%M:%S')}] Segment {segment.segment_id}\n")
                                 self.output_file.write(f"  Latency: {segment.latency_recognition:.2f}s (recog) + {segment.latency_translation:.2f}s (trans)\n")
                                 self.output_file.write(f"  Queue depth: {segment.queue_depth_at_queue}\n")
-                                self.output_file.write(f"  Text: {transcript}\n\n")
+                                # Log the first translation (usually English)
+                                first_lang = self.display_languages[0][1] if self.display_languages else None
+                                if first_lang and first_lang in translations:
+                                    self.output_file.write(f"  Text: {translations[first_lang]}\n\n")
+                                else:
+                                    self.output_file.write(f"  Text: {transcript}\n\n")
                                 self.output_file.flush()
                         
                         print("-" * 50)
@@ -4818,6 +5004,87 @@ If you see many HIGH severity items, consider:
                                 
                                 for lang_name, translation in translations.items():
                                     print(f"   -> {lang_name}: {translation[:80]}...")
+                        
+                        # ============================================================
+                        # AUDIO REPLAY BUFFER - Recover audio from restart gap
+                        # ============================================================
+                        # Replayed segments are added to the NORMAL display queue
+                        # so they flow smoothly at the configured reading speed.
+                        # This prevents a "burst" of text and maintains natural pacing.
+                        # ============================================================
+                        if self.audio_replay_buffer is not None:
+                            chunks_to_replay = self.audio_replay_buffer.get_chunks_for_replay()
+                            
+                            if chunks_to_replay:
+                                print(f"\n🔄 [AUDIO REPLAY] Starting replay of {len(chunks_to_replay)} chunks...")
+                                print(f"   Recovered audio will flow through normal display queue for smooth pacing.")
+                                
+                                # Create a new streaming recognition request with the buffered audio
+                                try:
+                                    def replay_generator():
+                                        for audio_bytes, timestamp in chunks_to_replay:
+                                            yield speech.StreamingRecognizeRequest(audio_content=audio_bytes)
+                                    
+                                    # Use same config for replay
+                                    replay_responses = self.speech_client.streaming_recognize(
+                                        streaming_config, replay_generator()
+                                    )
+                                    
+                                    replay_segments = 0
+                                    for response in replay_responses:
+                                        for result in response.results:
+                                            if result.is_final:
+                                                replay_transcript = result.alternatives[0].transcript
+                                                replay_transcript = self.apply_post_recognition_corrections(replay_transcript)
+                                                replay_word_count = len(replay_transcript.split())
+                                                
+                                                if replay_word_count >= 3:  # Only process if meaningful content
+                                                    replay_segments += 1
+                                                    
+                                                    # Translate
+                                                    replay_translations = self.translate_to_multiple(replay_transcript)
+                                                    replay_timestamp = datetime.now()
+                                                    
+                                                    self.segment_counter += 1
+                                                    replay_segment = SegmentData(
+                                                        segment_id=self.segment_counter,
+                                                        text_original=replay_transcript,
+                                                        text_translated=replay_translations,
+                                                        word_count=replay_word_count,
+                                                        timestamp_spoken=chunks_to_replay[0][1],  # Use first chunk timestamp
+                                                        timestamp_recognized=replay_timestamp,
+                                                        timestamp_translated=replay_timestamp,
+                                                        timestamp_queued=datetime.now(),
+                                                        is_interim=False,
+                                                        queue_depth_at_queue=self.display.text_queue.qsize()
+                                                    )
+                                                    
+                                                    # Add to NORMAL display queue for smooth pacing
+                                                    # The queue handles display timing based on reading speed
+                                                    display_translations = [
+                                                        replay_translations.get(lang[1], "") 
+                                                        for lang in self.display_languages
+                                                    ]
+                                                    self.display.add_translation(display_translations, replay_segment, False)
+                                                    
+                                                    # Write to CSV and session
+                                                    self._write_csv_row(replay_segment)
+                                                    self.session.add_segment(replay_segment)
+                                                    
+                                                    print(f"   [REPLAY #{replay_segments}] Queued: {replay_transcript[:50]}...")
+                                    
+                                    if replay_segments > 0:
+                                        queue_depth_after = self.display.text_queue.qsize()
+                                        print(f"✅ [AUDIO REPLAY] Recovered {replay_segments} segments!")
+                                        print(f"   Added to display queue (depth now: {queue_depth_after})")
+                                        print(f"   Content will display at normal reading pace.")
+                                        # Update last segment time after replay
+                                        self.last_segment_time = datetime.now()
+                                    else:
+                                        print(f"⚠️ [AUDIO REPLAY] No meaningful content found in replay")
+                                        
+                                except Exception as replay_error:
+                                    print(f"⚠️ [AUDIO REPLAY] Replay failed: {replay_error}")
                         
                         # Calculate gap since last segment
                         if self.last_segment_time:
@@ -5223,6 +5490,20 @@ Note: Google Speech API has a ~5 minute streaming limit.
 Stream restarts are unavoidable; gaps represent audio that was not processed.
 {'='*70}
 """
+            # Add replay buffer stats if enabled
+            if self.audio_replay_buffer is not None:
+                replay_stats = self.audio_replay_buffer.get_stats()
+                replay_section = f"""
+AUDIO REPLAY BUFFER (Option 3 - Restart Recovery)
+{'='*70}
+Buffer Size:           {replay_stats['buffer_seconds']} seconds
+Total Replays:         {replay_stats['total_replays']}
+Chunks Replayed:       {replay_stats['total_chunks_replayed']}
+Audio Recovered:       {replay_stats['total_recovered_seconds']:.1f} seconds
+Estimated Words Recovered: ~{int(replay_stats['total_recovered_seconds'] * 130 / 60)} words
+{'='*70}
+"""
+                restart_gap_section += replay_section
         else:
             restart_gap_section = ""
         
