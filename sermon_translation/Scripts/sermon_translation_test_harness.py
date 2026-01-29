@@ -1122,7 +1122,50 @@ class TestHarnessDisplay:
         )
         self.status_bar.pack(fill=tk.X)
         
-        # === MAIN CONTENT ===
+        # === CONTROL BAR (pack FIRST at bottom so it's always visible) ===
+        control_frame = tk.Frame(self.root, bg='#1a1a1a', relief=tk.RAISED, bd=1)
+        control_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=0)
+        
+        # Inner frame for control buttons with padding
+        control_inner = tk.Frame(control_frame, bg='#1a1a1a')
+        control_inner.pack(pady=8)
+        
+        tk.Button(control_inner, text="Clear", command=self.clear_display,
+                  bg='#444444', fg='white', font=('Arial', 11), padx=15, pady=5,
+                  activebackground='#555555', activeforeground='white').pack(side=tk.LEFT, padx=8)
+        
+        tk.Label(control_inner, text="Font Size:", bg='#1a1a1a', fg='white',
+                 font=('Arial', 11)).pack(side=tk.LEFT, padx=(20, 5))
+        
+        tk.Button(control_inner, text=" − ", command=self.decrease_font,
+                  bg='#444444', fg='white', font=('Arial', 14, 'bold'), width=3, pady=2,
+                  activebackground='#555555', activeforeground='white').pack(side=tk.LEFT, padx=3)
+        
+        # Font size display label (between − and + buttons)
+        self.font_size_label = tk.Label(
+            control_inner, 
+            text=str(self.font_size),
+            bg='#2a2a2a', 
+            fg='#00ff88',  # Green for visibility
+            font=('Arial', 14, 'bold'),
+            width=4,
+            relief=tk.SUNKEN,
+            bd=1
+        )
+        self.font_size_label.pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(control_inner, text=" + ", command=self.increase_font,
+                  bg='#444444', fg='white', font=('Arial', 14, 'bold'), width=3, pady=2,
+                  activebackground='#555555', activeforeground='white').pack(side=tk.LEFT, padx=3)
+        
+        # F5 reminder label
+        tk.Label(control_inner, text="│", bg='#1a1a1a', fg='#444444',
+                 font=('Arial', 14)).pack(side=tk.LEFT, padx=10)
+        
+        tk.Label(control_inner, text="F5 = Congregation Window", bg='#1a1a1a', fg='#888888',
+                 font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
+        
+        # === MAIN CONTENT (pack AFTER control bar) ===
         main_frame = tk.Frame(self.root, bg='black')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
@@ -1169,21 +1212,7 @@ class TestHarnessDisplay:
                 separator = tk.Frame(main_frame, bg='gray', height=2)
                 separator.pack(fill=tk.X, pady=3)
         
-        # === CONTROL BAR ===
-        control_frame = tk.Frame(self.root, bg='black')
-        control_frame.pack(side=tk.BOTTOM, pady=5)
-        
-        tk.Button(control_frame, text="Clear", command=self.clear_display,
-                  bg='gray20', fg='white', font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
-        
-        tk.Label(control_frame, text="Font:", bg='black', fg='white',
-                 font=('Arial', 10)).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(control_frame, text="-", command=self.decrease_font,
-                  bg='gray20', fg='white', font=('Arial', 10), width=3).pack(side=tk.LEFT, padx=2)
-        
-        tk.Button(control_frame, text="+", command=self.increase_font,
-                  bg='gray20', fg='white', font=('Arial', 10), width=3).pack(side=tk.LEFT, padx=2)
+        # Control bar is now created earlier (before main_frame) to ensure visibility
         
         # Start processing thread
         self.is_running = True
@@ -1393,7 +1422,7 @@ class TestHarnessDisplay:
         
         # Set font style based on interim status
         if is_interim and self.config.get('use_interim_results'):
-            text_font = self.display_font
+            text_font = self.display_font_italic
             base_color = '#aaaaff'  # Slight blue tint for interim
         else:
             text_font = self.display_font
@@ -1436,6 +1465,9 @@ class TestHarnessDisplay:
         self.font_size = min(self.font_size + 2, 120)  # Max 120 for 4K displays
         self.display_font.configure(size=self.font_size)
         self.display_font_italic.configure(size=self.font_size)
+        # Update font size display label
+        if hasattr(self, 'font_size_label'):
+            self.font_size_label.config(text=str(self.font_size))
         # Sync to presentation window
         if hasattr(self, 'presentation_window') and self.presentation_window:
             self.presentation_window.set_font_size(self.font_size)
@@ -1444,6 +1476,9 @@ class TestHarnessDisplay:
         self.font_size = max(self.font_size - 2, 16)
         self.display_font.configure(size=self.font_size)
         self.display_font_italic.configure(size=self.font_size)
+        # Update font size display label
+        if hasattr(self, 'font_size_label'):
+            self.font_size_label.config(text=str(self.font_size))
         # Sync to presentation window
         if hasattr(self, 'presentation_window') and self.presentation_window:
             self.presentation_window.set_font_size(self.font_size)
@@ -1543,6 +1578,7 @@ class PresentationWindow:
         self.font_size = font_size
         self.fade_duration = fade_duration
         self.is_fading = False
+        self.parent_root = parent_root
         
         # Create new top-level window
         self.window = tk.Toplevel(parent_root)
@@ -1559,21 +1595,26 @@ class PresentationWindow:
         self.display_font = font.Font(family="Arial", size=self.font_size, weight="bold")
         self.display_font_italic = font.Font(family="Arial", size=self.font_size, weight="bold", slant="italic")
         
-        # Main container - clean, no padding issues
-        main_frame = tk.Frame(self.window, bg='black')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=40)
+        # Padding values - reduced for more text space
+        self.horizontal_padding = 20  # Left and right padding
+        self.vertical_padding = 15    # Top and bottom padding
+        
+        # Main container - minimal padding, let text use full width
+        self.main_frame = tk.Frame(self.window, bg='black')
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=self.horizontal_padding, pady=self.vertical_padding)
         
         # Create text labels for each language - NO HEADERS
         self.lang_frames = []
         self.lang_texts = []
         
         for i, lang_name in enumerate(self.language_names):
-            # Language frame
-            lang_frame = tk.Frame(main_frame, bg='black')
-            lang_frame.pack(fill=tk.BOTH, expand=True, pady=20)
+            # Language frame - use pack with proper expansion
+            lang_frame = tk.Frame(self.main_frame, bg='black')
+            lang_frame.pack(fill=tk.BOTH, expand=True, pady=10)
             self.lang_frames.append(lang_frame)
             
             # Language text ONLY (large, prominent) - NO HEADER
+            # Use a Text widget approach with Label for better control
             text_label = tk.Label(
                 lang_frame,
                 text="",
@@ -1581,15 +1622,16 @@ class PresentationWindow:
                 fg='white',
                 bg='black',
                 justify='center',
-                wraplength=self.window.winfo_screenwidth() - 100
+                anchor='center',
+                wraplength=1  # Will be updated dynamically
             )
-            text_label.pack(expand=True, fill=tk.BOTH)
+            text_label.pack(expand=True, fill=tk.BOTH, padx=10)
             self.lang_texts.append(text_label)
             
             # Separator (except after last language) - subtle
             if i < len(self.language_names) - 1:
-                separator = tk.Frame(main_frame, bg='#222222', height=1)
-                separator.pack(fill=tk.X, pady=15)
+                separator = tk.Frame(self.main_frame, bg='#333333', height=2)
+                separator.pack(fill=tk.X, pady=5)
         
         # NO hint label - clean display for congregation
         
@@ -1599,6 +1641,36 @@ class PresentationWindow:
         
         # Bind Escape to exit fullscreen
         self.window.bind('<Escape>', self.exit_fullscreen)
+        
+        # Bind configure event to update wraplength when window is resized
+        self.window.bind('<Configure>', self._on_window_resize)
+        
+        # Initial update of wraplength after window is drawn
+        self.window.after(100, self._update_wraplength)
+    
+    def _on_window_resize(self, event=None):
+        """Handle window resize - update text wraplength"""
+        self._update_wraplength()
+    
+    def _update_wraplength(self):
+        """Update wraplength for all text labels based on current window width"""
+        try:
+            # Get actual window width
+            self.window.update_idletasks()
+            window_width = self.window.winfo_width()
+            
+            # Calculate available width for text
+            # Account for: horizontal padding (both sides) + internal label padding
+            total_padding = (self.horizontal_padding * 2) + 40  # Extra margin for safety
+            available_width = max(200, window_width - total_padding)
+            
+            # Update wraplength for all text labels
+            for text_label in self.lang_texts:
+                text_label.config(wraplength=available_width)
+                
+        except Exception as e:
+            # Window might be destroyed
+            pass
     
     def _position_on_second_monitor(self, parent_root):
         """Try to position window on second monitor if available"""
@@ -1632,27 +1704,31 @@ class PresentationWindow:
             print(f"    📺 Presentation: FULLSCREEN mode")
         else:
             print(f"    📺 Presentation: WINDOWED mode")
+        # Update wraplength after fullscreen toggle
+        self.window.after(100, self._update_wraplength)
     
     def exit_fullscreen(self, event=None):
         """Exit fullscreen mode"""
         if self.is_fullscreen:
             self.is_fullscreen = False
             self.window.attributes('-fullscreen', False)
+            # Update wraplength after exiting fullscreen
+            self.window.after(100, self._update_wraplength)
     
     def update_text(self, translations, is_interim=False):
         """Update displayed text with fade effect
         
         Args:
             translations: List of translated texts (one per language)
-            is_interim: Whether this is interim (incomplete) text
+            is_interim: Whether this is interim (incomplete) text (ignored - always use regular font)
         """
         # Don't start a new fade if one is in progress
         if self.is_fading:
             # Just update the text directly if already fading
-            text_font = self.display_font if is_interim else self.display_font
+            # Always use regular font (no italics for congregation)
             for i, text_label in enumerate(self.lang_texts):
                 text = translations[i] if i < len(translations) else ""
-                text_label.config(text=text, font=text_font)
+                text_label.config(text=text, font=self.display_font)
             return
         
         # Start fade transition in a thread to not block
@@ -1669,8 +1745,8 @@ class PresentationWindow:
         self.is_fading = True
         
         try:
-            # Determine font style
-            text_font = self.display_font if is_interim else self.display_font
+            # Always use regular font for congregation display (no italics)
+            text_font = self.display_font
             
             if self.fade_duration <= 0:
                 # No fade - instant update

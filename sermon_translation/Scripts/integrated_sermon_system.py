@@ -2,11 +2,13 @@
 Multi-Language Integrated Sermon Translation System
 
 Features:
-- 1 input language → 1-4 output languages
+- 1 input language to 1-4 output languages
 - Dual-language display (side-by-side)
 - Combined file output with all translations
 - Number-based configuration (no typing)
 - Redo/Cancel options
+- Pause/Resume controls
+- Smooth fade transitions
 """
 
 import pyaudio
@@ -22,6 +24,7 @@ import warnings
 import tkinter as tk
 from tkinter import font
 from collections import deque
+import json
 
 # Suppress warnings
 os.environ['GRPC_VERBOSITY'] = 'ERROR'
@@ -36,6 +39,28 @@ RATE = 16000
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
+
+# Default display timing settings
+DEFAULT_SETTINGS = {
+    "reading_speed": 240,  # words per minute
+    "min_display_time": 3,  # seconds
+    "fade_duration": 1.0,  # seconds
+    "buffer_time": 1  # seconds
+}
+
+# Reading speed presets
+READING_SPEED_PRESETS = {
+    "1": (280, "Fast readers"),
+    "2": (240, "Average readers"),
+    "3": (180, "Slow readers")
+}
+
+# Fade duration presets
+FADE_DURATION_PRESETS = {
+    "1": (0.5, "Quick"),
+    "2": (1.0, "Normal"),
+    "3": (1.5, "Slow")
+}
 
 # Language mappings
 INPUT_LANGUAGES = {
@@ -74,16 +99,24 @@ OUTPUT_LANGUAGES = {
 
 
 class DualLanguageDisplay:
-    """Display showing 2 languages side-by-side with pause/resume control"""
+    """Display showing 2 languages side-by-side with pause/resume control and fade transitions"""
     
-    def __init__(self, language1_name, language2_name, font_size=24):
+    def __init__(self, language1_name, language2_name, display_settings, font_size=24):
         self.font_size = font_size
+        self.display_settings = display_settings
         self.text_queue = queue.Queue()
         self.is_running = False
-        self.is_paused = False  # Pause state
+        self.is_paused = False
         
-        self.lang1_lines = deque(maxlen=3)
-        self.lang2_lines = deque(maxlen=3)
+        # Current text being displayed
+        self.current_lang1 = ""
+        self.current_lang2 = ""
+        self.display_start_time = None
+        self.current_word_count = 0
+        
+        # Fade animation
+        self.fade_alpha = 1.0
+        self.is_fading = False
         
         # Create window
         self.root = tk.Tk()
@@ -123,7 +156,7 @@ class DualLanguageDisplay:
         main_frame = tk.Frame(self.root, bg='black')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        # Language 1 section (top)
+        # Language 1 section (top) - Movie subtitle style (centered)
         lang1_frame = tk.Frame(main_frame, bg='black')
         lang1_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
@@ -142,8 +175,8 @@ class DualLanguageDisplay:
             font=self.display_font,
             fg='white',
             bg='black',
-            justify='center',
-            wraplength=window_width - 40
+            justify='center',  # Movie subtitle style
+            wraplength=window_width - 100
         )
         self.lang1_text.pack(expand=True)
         
@@ -151,7 +184,7 @@ class DualLanguageDisplay:
         separator = tk.Frame(main_frame, bg='gray', height=2)
         separator.pack(fill=tk.X, pady=5)
         
-        # Language 2 section (bottom)
+        # Language 2 section (bottom) - Movie subtitle style (centered)
         lang2_frame = tk.Frame(main_frame, bg='black')
         lang2_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         
@@ -170,8 +203,8 @@ class DualLanguageDisplay:
             font=self.display_font,
             fg='white',
             bg='black',
-            justify='center',
-            wraplength=window_width - 40
+            justify='center',  # Movie subtitle style
+            wraplength=window_width - 100
         )
         self.lang2_text.pack(expand=True)
         
@@ -202,10 +235,23 @@ class DualLanguageDisplay:
         tk.Button(control_frame, text="+", command=self.increase_font,
                   bg='gray20', fg='white', font=('Arial', 10), width=3).pack(side=tk.LEFT, padx=2)
         
-        # Start processing
+        # Start processing threads
         self.is_running = True
         self.update_thread = threading.Thread(target=self._process_queue, daemon=True)
         self.update_thread.start()
+        
+        self.animation_thread = threading.Thread(target=self._animation_loop, daemon=True)
+        self.animation_thread.start()
+    
+    def _calculate_display_time(self, text):
+        """Calculate how long text should be displayed based on reading speed"""
+        words = len(text.split())
+        reading_time = (words / self.display_settings["reading_speed"]) * 60
+        total_time = max(
+            reading_time + self.display_settings["buffer_time"],
+            self.display_settings["min_display_time"]
+        )
+        return total_time
     
     def set_paused(self, paused):
         """Update pause state and display"""
@@ -222,34 +268,96 @@ class DualLanguageDisplay:
             )
     
     def add_translation(self, lang1_text, lang2_text):
-        """Add translation pair to display"""
+        """Add translation pair to display queue"""
         if lang1_text and lang2_text:
             self.text_queue.put((lang1_text, lang2_text))
     
     def _process_queue(self):
-        """Process incoming translations"""
+        """Process incoming translations with timing"""
         while self.is_running:
             try:
                 lang1, lang2 = self.text_queue.get(timeout=0.1)
-                self._update_display(lang1, lang2)
+                
+                # If currently displaying, wait for display time to complete
+                if self.current_lang1:
+                    elapsed = (datetime.now() - self.display_start_time).total_seconds()
+                    required_time = self._calculate_display_time(self.current_lang1)
+                    
+                    if elapsed < required_time:
+                        wait_time = required_time - elapsed
+                        import time
+                        time.sleep(wait_time)
+                    
+                    # Fade out current text
+                    self._fade_out()
+                
+                # Fade in new text
+                self._fade_in(lang1, lang2)
+                
             except queue.Empty:
                 continue
     
-    def _update_display(self, lang1_text, lang2_text):
-        """Update both language displays"""
-        self.lang1_lines.append(lang1_text)
-        self.lang2_lines.append(lang2_text)
+    def _fade_out(self):
+        """Fade out current text"""
+        self.is_fading = True
+        fade_steps = 20
+        fade_delay = self.display_settings["fade_duration"] / fade_steps
         
-        lang1_display = "\n".join(self.lang1_lines)
-        lang2_display = "\n".join(self.lang2_lines)
+        for step in range(fade_steps, -1, -1):
+            if not self.is_running:
+                break
+            alpha = step / fade_steps
+            self._set_text_alpha(alpha)
+            import time
+            time.sleep(fade_delay)
         
-        self.root.after(0, lambda: self.lang1_text.config(text=lang1_display))
-        self.root.after(0, lambda: self.lang2_text.config(text=lang2_display))
+        self.is_fading = False
+    
+    def _fade_in(self, lang1_text, lang2_text):
+        """Fade in new text"""
+        self.current_lang1 = lang1_text
+        self.current_lang2 = lang2_text
+        self.display_start_time = datetime.now()
+        self.is_fading = True
+        
+        fade_steps = 20
+        fade_delay = self.display_settings["fade_duration"] / fade_steps
+        
+        for step in range(fade_steps + 1):
+            if not self.is_running:
+                break
+            alpha = step / fade_steps
+            self._set_text_alpha(alpha)
+            import time
+            time.sleep(fade_delay)
+        
+        self.is_fading = False
+    
+    def _set_text_alpha(self, alpha):
+        """Set text opacity (alpha)"""
+        # Convert alpha to color brightness
+        brightness = int(255 * alpha)
+        color = f'#{brightness:02x}{brightness:02x}{brightness:02x}'
+        
+        self.root.after(0, lambda: self.lang1_text.config(
+            text=self.current_lang1,
+            fg=color
+        ))
+        self.root.after(0, lambda: self.lang2_text.config(
+            text=self.current_lang2,
+            fg=color
+        ))
+    
+    def _animation_loop(self):
+        """Main animation loop"""
+        while self.is_running:
+            import time
+            time.sleep(0.05)
     
     def clear_display(self):
         """Clear both displays"""
-        self.lang1_lines.clear()
-        self.lang2_lines.clear()
+        self.current_lang1 = ""
+        self.current_lang2 = ""
         self.lang1_text.config(text="")
         self.lang2_text.config(text="")
     
@@ -341,7 +449,7 @@ class MultiLanguageSermonSystem:
         "grace", "salvation", "redemption", "Scripture", "Gospel"
     ]
     
-    def __init__(self, source_language, target_languages, display_languages):
+    def __init__(self, source_language, target_languages, display_languages, display_settings):
         """
         Initialize system
         
@@ -349,6 +457,7 @@ class MultiLanguageSermonSystem:
             source_language: (code, name) tuple for input
             target_languages: List of (code, name) tuples for outputs
             display_languages: List of 2 (code, name) tuples for display
+            display_settings: Dictionary with display timing settings
         """
         # Initialize credentials
         creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 
@@ -361,6 +470,7 @@ class MultiLanguageSermonSystem:
         self.source_language = source_language
         self.target_languages = target_languages
         self.display_languages = display_languages
+        self.display_settings = display_settings
         self.output_file = None
         
         # Pause/resume control
@@ -375,6 +485,7 @@ class MultiLanguageSermonSystem:
         self.display = DualLanguageDisplay(
             display_languages[0][1],
             display_languages[1][1],
+            display_settings,
             font_size=28
         )
         
@@ -662,6 +773,114 @@ class MultiLanguageSermonSystem:
         print(f"   Pauses: {self.pause_count} times")
 
 
+def load_display_settings():
+    """Load saved display settings or return defaults"""
+    config_path = "config/display_settings.json"
+    
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    
+    return DEFAULT_SETTINGS.copy()
+
+
+def save_display_settings(settings):
+    """Save display settings to file"""
+    os.makedirs("config", exist_ok=True)
+    config_path = "config/display_settings.json"
+    
+    with open(config_path, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+
+def configure_display_settings(settings):
+    """Configure display timing settings"""
+    
+    # Determine current preset
+    current_speed_preset = "2"  # Default to Average
+    for key, (speed, name) in READING_SPEED_PRESETS.items():
+        if speed == settings["reading_speed"]:
+            current_speed_preset = key
+            break
+    
+    current_fade_preset = "2"  # Default to Normal
+    for key, (duration, name) in FADE_DURATION_PRESETS.items():
+        if duration == settings["fade_duration"]:
+            current_fade_preset = key
+            break
+    
+    print("\nSTEP 5: DISPLAY TIMING SETTINGS")
+    print("-" * 70)
+    print("Current settings:")
+    speed_name = READING_SPEED_PRESETS[current_speed_preset][1]
+    fade_name = FADE_DURATION_PRESETS[current_fade_preset][1]
+    print(f"  • Reading Speed: {speed_name} ({settings['reading_speed']} words/min)")
+    print(f"  • Minimum Display: {settings['min_display_time']} seconds")
+    print(f"  • Fade Duration: {fade_name} ({settings['fade_duration']} seconds)")
+    
+    change = input("\nDo you want to change display timing? (y/N): ").strip().lower()
+    
+    if change == 'y':
+        print("\nDISPLAY TIMING CONFIGURATION")
+        print("-" * 70)
+        
+        # Reading speed
+        print("Select reading speed for your congregation:")
+        for key, (speed, name) in READING_SPEED_PRESETS.items():
+            marker = " [CURRENT]" if key == current_speed_preset else ""
+            print(f"{key}. {name} ({speed} wpm){marker}")
+        
+        speed_choice = input(f"\nSelect (1-3) or press Enter to keep current [{current_speed_preset}]: ").strip()
+        if not speed_choice:
+            speed_choice = current_speed_preset
+        
+        if speed_choice in READING_SPEED_PRESETS:
+            settings["reading_speed"] = READING_SPEED_PRESETS[speed_choice][0]
+            print(f"✓ Reading speed set to: {READING_SPEED_PRESETS[speed_choice][1]}")
+        
+        # Fade duration
+        print("\n" + "-" * 70)
+        print("Fade transition speed:")
+        for key, (duration, name) in FADE_DURATION_PRESETS.items():
+            marker = " [CURRENT]" if key == current_fade_preset else ""
+            print(f"{key}. {name} ({duration} seconds){marker}")
+        
+        fade_choice = input(f"\nSelect (1-3) or press Enter to keep current [{current_fade_preset}]: ").strip()
+        if not fade_choice:
+            fade_choice = current_fade_preset
+        
+        if fade_choice in FADE_DURATION_PRESETS:
+            settings["fade_duration"] = FADE_DURATION_PRESETS[fade_choice][0]
+            print(f"✓ Fade duration set to: {FADE_DURATION_PRESETS[fade_choice][1]}")
+        
+        # Adjust min display time based on reading speed
+        if settings["reading_speed"] >= 260:
+            settings["min_display_time"] = 3
+        elif settings["reading_speed"] >= 200:
+            settings["min_display_time"] = 3
+        else:
+            settings["min_display_time"] = 4
+        
+        print("\n" + "-" * 70)
+        print("Updated settings:")
+        print(f"  • Reading Speed: {settings['reading_speed']} words/min")
+        print(f"  • Minimum Display: {settings['min_display_time']} seconds")
+        print(f"  • Fade Duration: {settings['fade_duration']} seconds")
+        
+        # Save settings
+        save_choice = input("\nSave these settings as your defaults? (y/N): ").strip().lower()
+        if save_choice == 'y':
+            save_display_settings(settings)
+            print("✓ Settings saved to config/display_settings.json")
+    else:
+        print("✓ Using current display settings")
+    
+    return settings
+
+
 def configure_system():
     """Interactive configuration with redo/cancel options"""
     
@@ -753,6 +972,10 @@ def configure_system():
                     except ValueError:
                         print("❌ Enter a valid number.")
         
+        # Step 5: Display timing settings
+        display_settings = load_display_settings()
+        display_settings = configure_display_settings(display_settings)
+        
         # Summary
         print("\n" + "="*70)
         print("    CONFIGURATION SUMMARY")
@@ -760,6 +983,8 @@ def configure_system():
         print(f"Input Language:     {source_language[1]}")
         print(f"Output Languages:   {', '.join([l[1] for l in target_languages])}")
         print(f"Display Mode:       {display_languages[0][1]} + {display_languages[1][1]}")
+        print(f"Reading Speed:      {display_settings['reading_speed']} words/min")
+        print(f"Fade Duration:      {display_settings['fade_duration']} seconds")
         print(f"File Output:        Combined file with all translations")
         print(f"Save Location:      results/")
         print("="*70)
@@ -773,7 +998,7 @@ def configure_system():
             choice = input("\nEnter choice (1-3): ").strip()
             if choice == "1":
                 print("\n✓ Starting translation system...")
-                return source_language, target_languages, display_languages
+                return source_language, target_languages, display_languages, display_settings
             elif choice == "2":
                 print("\n✓ Restarting configuration...\n")
                 break  # Break inner loop to restart outer loop
@@ -782,8 +1007,6 @@ def configure_system():
                 exit(0)
             else:
                 print("❌ Invalid choice. Enter 1, 2, or 3.")
-        
-        # If we broke from choice == 2, continue outer while loop
 
 
 # Main entry point
@@ -794,13 +1017,14 @@ if __name__ == "__main__":
     print("="*70)
     
     # Configure system
-    source_lang, target_langs, display_langs = configure_system()
+    source_lang, target_langs, display_langs, display_settings = configure_system()
     
     # Create and start system
     system = MultiLanguageSermonSystem(
         source_language=source_lang,
         target_languages=target_langs,
-        display_languages=display_langs
+        display_languages=display_langs,
+        display_settings=display_settings
     )
     
     try:

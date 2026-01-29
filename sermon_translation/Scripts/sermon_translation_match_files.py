@@ -73,31 +73,54 @@ def extract_comparison_text(filepath, length=COMPARISON_LENGTH):
     """
     Extract the first N characters from a file for comparison.
     Tries multiple encodings if needed.
+    
+    For translation log files (with SOURCE: lines), extracts and concatenates
+    the Portuguese source text from the first several segments.
     """
     encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
     
     for encoding in encodings:
         try:
             with open(filepath, 'r', encoding=encoding) as f:
-                content = f.read(length * 2)  # Read extra to ensure we have enough
-                # Skip any BOM or header lines that might be metadata
-                lines = content.split('\n')
-                # Skip lines that look like headers/metadata
-                text_lines = []
-                for line in lines:
-                    line = line.strip()
-                    # Skip empty lines and lines that look like metadata
-                    if not line:
-                        continue
-                    if line.startswith('=') or line.startswith('-') or line.startswith('#'):
-                        continue
-                    if ':' in line and len(line.split(':')[0]) < 30:
-                        # Likely a "Label: value" metadata line
-                        continue
-                    text_lines.append(line)
+                content = f.read(length * 4)  # Read extra to ensure we have enough
                 
-                text = ' '.join(text_lines)[:length]
-                return normalize_text(text)
+                # Check if this is a translation log file (has SOURCE: lines)
+                if 'SOURCE:' in content:
+                    # Extract all SOURCE: lines and concatenate them
+                    source_lines = []
+                    for line in content.split('\n'):
+                        line = line.strip()
+                        if line.startswith('SOURCE:'):
+                            # Extract the Portuguese text after "SOURCE:"
+                            source_text = line[7:].strip()  # Remove "SOURCE:" prefix
+                            source_lines.append(source_text)
+                            # Get enough source lines for comparison
+                            if len(' '.join(source_lines)) >= length:
+                                break
+                    
+                    text = ' '.join(source_lines)[:length]
+                    return normalize_text(text)
+                
+                else:
+                    # Regular text file (raw transcript)
+                    lines = content.split('\n')
+                    # Skip lines that look like headers/metadata
+                    text_lines = []
+                    for line in lines:
+                        line = line.strip()
+                        # Skip empty lines and lines that look like metadata
+                        if not line:
+                            continue
+                        if line.startswith('=') or line.startswith('-') or line.startswith('#'):
+                            continue
+                        if ':' in line and len(line.split(':')[0]) < 30:
+                            # Likely a "Label: value" metadata line
+                            continue
+                        text_lines.append(line)
+                    
+                    text = ' '.join(text_lines)[:length]
+                    return normalize_text(text)
+                    
         except (UnicodeDecodeError, UnicodeError):
             continue
     
@@ -163,8 +186,12 @@ def generate_new_filename(raw_filename, translation_ext='.txt'):
     """
     Generate new translation filename based on raw filename.
     
-    Example: "2026-01-05 - Sermon Title - Pastor.txt" 
-          -> "2026-01-05 - Sermon Title - Pastor_translation.txt"
+    Example: 
+        Raw file: "2026-01-05 - Sermon Title - Pastor.txt" 
+        Result:   "2026-01-05 - Sermon Title - Pastor_translation.txt"
+    
+    The translation file's original name (like "balanced_quality_20260128_translations.txt")
+    is completely replaced with the raw file's name plus "_translation".
     """
     base, ext = os.path.splitext(raw_filename)
     return f"{base}_translation{ext}"
@@ -226,12 +253,6 @@ def match_and_rename_translations(raw_folder, translations_folder, dry_run=True,
     
     for trans_path in translation_files:
         trans_filename = os.path.basename(trans_path)
-        
-        # Skip if already has "_translation" in name
-        if "_translation" in trans_filename.lower():
-            print(f"\n⏭️  SKIP: {trans_filename}")
-            print(f"   (Already has '_translation' in filename)")
-            continue
         
         best_match, score = find_best_match(trans_path, raw_files, raw_texts)
         
