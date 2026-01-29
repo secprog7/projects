@@ -643,7 +643,6 @@ THEOLOGICAL_GLOSSARY = {
     "Getsêmani": "Gethsemane",
     "Getsemani": "Gethsemane",
     "Galileia": "Galilee",
-    "Galileia": "Galilee",
     "Judeia": "Judea",
     "Judéia": "Judea",
     "Samaria": "Samaria",
@@ -2648,6 +2647,13 @@ class TestHarnessSystem:
         "onipotência", "onisciência", "onipresença", "imutabilidade",
         "santidade", "justiça", "misericórdia", "bondade", "fidelidade",
         "verdade", "sabedoria", "eternidade",
+
+        # --- NEW CRITICAL HINTS (8-Sermon Analysis Jan 2026) ---
+        "elohim",              # Hebrew for God - missed 11 times
+        "Epáfras",             # Biblical name (Colossians) - missed 6 times
+        "gnosis",              # Greek: knowledge - missed 3 times
+        "trevas",              # Darkness (theological) - missed 10 times
+        "Michelet",            # French historian - missed 9 times
         
         # --- Biblical Books (Portuguese) ---
         "Gênesis", "Êxodo", "Levítico", "Números", "Deuteronômio",
@@ -2890,6 +2896,60 @@ class TestHarnessSystem:
         "Motorola": "Motorola",  # Keep brand name
         "iPhone": "iPhone",  # Keep brand name
         "Itaú": "Itaú",  # Keep brand name
+
+                # =================================================================
+        # HIGH CONFIDENCE CORRECTIONS (90%+) - 8-Sermon Analysis Jan 2026
+        # Derived from analysis of 8 sermons (65,451 words, 96.3% recognition)
+        # =================================================================
+        
+        # --- Verb Conjugation Fixes (Google simplifies Portuguese verbs) ---
+        "predestino": "predestinou",           # 95% - Past tense
+        "transforma": "transformai",           # 92% - Imperative plural
+        "perguntasse": "perguntassem",         # 92% - Subjunctive plural
+        "completasse": "completassem",         # 92% - Subjunctive plural
+        "escrevemos": "descrevemos",           # 92% - Prefix missing
+        "desaparecer": "desaparece",           # 92% - Tense change
+        "acompanhe": "acompanhem",             # 91% - Imperative plural
+        "modifique": "modifiquem",             # 91% - Imperative plural
+        "estenderá": "estenderás",             # 91% - Person change
+        "perguntar": "perguntara",             # 91% - Past perfect
+        "frutificar": "frutifica",             # 91% - Tense change
+        "escraviza": "escravizar",             # 91% - Infinitive
+        "desculpe": "desculpem",               # 90% - Imperative plural
+        "reclinar": "reclinara",               # 90% - Past perfect
+        "instigar": "instigará",               # 90% - Future tense
+        
+        # --- Plural/Singular Fixes ---
+        "colossense": "colossenses",           # 92% - Plural needed
+        "produzidas": "produzida",             # 91% - Singular needed
+        "paciente": "pacientes",               # 90% - Plural needed
+        "teológicas": "teológica",             # 91% - Singular needed
+        "exercícios": "exercício",             # 91% - Singular needed
+        "coríntios": "coríntio",               # 90% - Singular context
+        "verdadeira": "verdadeiras",           # 92% - Plural needed
+        
+        # --- Proper Name Corrections ---
+        "micheleto": "michelet",               # 90% - French historian
+        "michele": "michelet",                 # 88% - French historian
+        "márcios": "március",                  # 73% - Name variant
+        "nicolas": "nicolás",                  # 73% - Biblical name
+        
+        # --- Theological Term Fixes ---
+        "existencialistas": "existencialista", # 95% - Singular
+        "serpente": "serpentes",               # 90% - Plural (biblical)
+        "letradas": "iletradas",               # 90% - Prefix missing
+        "interruptamente": "ininterruptamente", # 89% - Prefix missing
+        
+        # --- Gender Fixes (context-clear) ---
+        "animadora": "animador",               # 90% - Masculine context
+        
+        # --- Additional High-Frequency Corrections ---
+        "transborde": "transbordeis",          # 88% - Subjunctive plural
+        "machuca": "machucam",                 # 88% - Plural verb
+        "rasteja": "rastejam",                 # 89% - Plural verb
+        "observe": "observem",                 # 89% - Imperative plural
+        "tolice": "tolices",                   # 87% - Plural needed
+        "devotar": "devotará",                 # 89% - Future tense
     }
     
     @classmethod

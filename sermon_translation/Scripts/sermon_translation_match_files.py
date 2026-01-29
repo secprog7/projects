@@ -174,7 +174,7 @@ def generate_new_filename(raw_filename, translation_ext='.txt'):
 # MAIN MATCHING FUNCTION
 # =============================================================================
 
-def match_and_rename_translations(raw_folder, translations_folder, dry_run=True):
+def match_and_rename_translations(raw_folder, translations_folder, dry_run=True, similarity_threshold=MINIMUM_SIMILARITY):
     """
     Match translation files to raw transcripts and rename them.
     
@@ -182,6 +182,7 @@ def match_and_rename_translations(raw_folder, translations_folder, dry_run=True)
         raw_folder: Path to folder containing raw Portuguese transcripts
         translations_folder: Path to folder containing translation files
         dry_run: If True, only show what would be done (don't actually rename)
+        similarity_threshold: Minimum similarity ratio to consider a match
     
     Returns:
         dict with match results and statistics
@@ -234,7 +235,7 @@ def match_and_rename_translations(raw_folder, translations_folder, dry_run=True)
         
         best_match, score = find_best_match(trans_path, raw_files, raw_texts)
         
-        if best_match and score >= MINIMUM_SIMILARITY:
+        if best_match and score >= similarity_threshold:
             raw_filename = os.path.basename(best_match)
             new_filename = generate_new_filename(raw_filename)
             new_path = os.path.join(translations_folder, new_filename)
@@ -260,7 +261,7 @@ def match_and_rename_translations(raw_folder, translations_folder, dry_run=True)
             unmatched_translations.append(trans_path)
             print(f"\n❌ NO MATCH: {trans_filename}")
             if best_match:
-                print(f"   Best candidate: {os.path.basename(best_match)} ({score*100:.1f}% - below {MINIMUM_SIMILARITY*100:.0f}% threshold)")
+                print(f"   Best candidate: {os.path.basename(best_match)} ({score*100:.1f}% - below {similarity_threshold*100:.0f}% threshold)")
             else:
                 print(f"   Could not extract text for comparison")
     
@@ -441,9 +442,7 @@ Examples:
     args = parser.parse_args()
     
     # Update threshold if specified
-    global MINIMUM_SIMILARITY
-    if args.threshold:
-        MINIMUM_SIMILARITY = args.threshold
+    threshold = args.threshold if args.threshold else MINIMUM_SIMILARITY
     
     # If both folders provided, run directly
     if args.raw and args.translations:
@@ -454,7 +453,7 @@ Examples:
             print(f"ERROR: Translations folder not found: {args.translations}")
             return
         
-        match_and_rename_translations(args.raw, args.translations, dry_run=not args.execute)
+        match_and_rename_translations(args.raw, args.translations, dry_run=not args.execute, similarity_threshold=threshold)
     else:
         # Interactive mode
         interactive_mode()
