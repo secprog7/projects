@@ -1393,7 +1393,7 @@ class TestHarnessDisplay:
         
         # Set font style based on interim status
         if is_interim and self.config.get('use_interim_results'):
-            text_font = self.display_font_italic
+            text_font = self.display_font
             base_color = '#aaaaff'  # Slight blue tint for interim
         else:
             text_font = self.display_font
@@ -1450,26 +1450,56 @@ class TestHarnessDisplay:
     
     def toggle_presentation_window(self, event=None):
         """Toggle presentation window on/off (F5)"""
+        print(f"\n🔧 [{datetime.now().strftime('%H:%M:%S')}] F5 pressed - toggling presentation window...")
+        
         if hasattr(self, 'presentation_window') and self.presentation_window:
             # Close presentation window
-            self.presentation_window.close()
-            self.presentation_window = None
-            print(f"\n📺 [{datetime.now().strftime('%H:%M:%S')}] Presentation window CLOSED")
+            try:
+                self.presentation_window.close()
+                self.presentation_window = None
+                print(f"📺 [{datetime.now().strftime('%H:%M:%S')}] Presentation window CLOSED")
+            except Exception as e:
+                print(f"❌ Error closing presentation window: {e}")
+                self.presentation_window = None
         else:
             # Open presentation window on second monitor
-            self.presentation_window = PresentationWindow(
-                self.root,
-                self.language_names,
-                self.font_size
-            )
-            # Sync current text to presentation
-            if self.current_texts:
-                self.presentation_window.update_text(
-                    self.current_texts, 
-                    self.current_is_interim
+            try:
+                print(f"    Creating PresentationWindow with {len(self.language_names)} languages...")
+                
+                # Get fade duration from config
+                fade_duration = self.config.get('fade_duration', 0.3)
+                
+                self.presentation_window = PresentationWindow(
+                    self.root,
+                    self.language_names,
+                    self.font_size,
+                    fade_duration
                 )
-            print(f"\n📺 [{datetime.now().strftime('%H:%M:%S')}] Presentation window OPENED")
-            print(f"    (Drag to congregation screen if needed)")
+                print(f"    PresentationWindow created successfully")
+                print(f"    Fade duration: {fade_duration}s")
+                
+                # Sync current text to presentation
+                if self.current_texts:
+                    self.presentation_window.update_text(
+                        self.current_texts, 
+                        self.current_is_interim
+                    )
+                    print(f"    Synced current text to presentation")
+                
+                # Force the window to be visible and in front
+                self.presentation_window.window.lift()
+                self.presentation_window.window.focus_force()
+                
+                print(f"📺 [{datetime.now().strftime('%H:%M:%S')}] Presentation window OPENED")
+                print(f"    Window position: {self.presentation_window.window.winfo_x()}, {self.presentation_window.window.winfo_y()}")
+                print(f"    Window size: {self.presentation_window.window.winfo_width()}x{self.presentation_window.window.winfo_height()}")
+                print(f"    (Drag to congregation screen if needed)")
+                print(f"    Press F11 on congregation window for fullscreen")
+            except Exception as e:
+                print(f"❌ ERROR creating presentation window: {e}")
+                import traceback
+                traceback.print_exc()
+                self.presentation_window = None
     
     def update_presentation_window(self, translations, is_interim=False):
         """Update presentation window with new translations"""
@@ -1494,10 +1524,11 @@ class TestHarnessDisplay:
 class PresentationWindow:
     """
     Clean fullscreen presentation window for congregation display.
-    Shows ONLY translated text - no tech info, status bars, or controls.
+    Shows ONLY translated text - no headers, hints, or controls.
+    Includes fade effects matching the main display.
     """
     
-    def __init__(self, parent_root, language_names, font_size=28):
+    def __init__(self, parent_root, language_names, font_size=28, fade_duration=0.3):
         """
         Initialize presentation window
         
@@ -1505,10 +1536,13 @@ class PresentationWindow:
             parent_root: Parent Tk window (for monitor detection)
             language_names: List of language names to display
             font_size: Initial font size (synced from main window)
+            fade_duration: Duration of fade transitions in seconds
         """
         self.language_names = language_names
         self.num_languages = len(language_names)
         self.font_size = font_size
+        self.fade_duration = fade_duration
+        self.is_fading = False
         
         # Create new top-level window
         self.window = tk.Toplevel(parent_root)
@@ -1518,46 +1552,28 @@ class PresentationWindow:
         # Try to detect and use second monitor
         self._position_on_second_monitor(parent_root)
         
-        # Remove window decorations for clean look (optional - can be toggled)
-        # self.window.overrideredirect(True)  # Uncomment for borderless
-        
         # Make it stay on top
         self.window.attributes('-topmost', True)
         
-        # Create fonts
+        # Create fonts - match main display
         self.display_font = font.Font(family="Arial", size=self.font_size, weight="bold")
         self.display_font_italic = font.Font(family="Arial", size=self.font_size, weight="bold", slant="italic")
         
-        # Main container
+        # Main container - clean, no padding issues
         main_frame = tk.Frame(self.window, bg='black')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=40)
         
-        # Create text labels for each language
+        # Create text labels for each language - NO HEADERS
         self.lang_frames = []
         self.lang_texts = []
-        self.lang_headers = []
-        
-        # Colors for language headers
-        header_colors = ['#ffcc00', '#00ccff', '#ff6699', '#66ff66']
         
         for i, lang_name in enumerate(self.language_names):
             # Language frame
             lang_frame = tk.Frame(main_frame, bg='black')
-            lang_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+            lang_frame.pack(fill=tk.BOTH, expand=True, pady=20)
             self.lang_frames.append(lang_frame)
             
-            # Language header (small, subtle)
-            header = tk.Label(
-                lang_frame,
-                text=lang_name.upper(),
-                font=font.Font(family="Arial", size=14, weight="bold"),
-                fg=header_colors[i % len(header_colors)],
-                bg='black'
-            )
-            header.pack()
-            self.lang_headers.append(header)
-            
-            # Language text (large, prominent)
+            # Language text ONLY (large, prominent) - NO HEADER
             text_label = tk.Label(
                 lang_frame,
                 text="",
@@ -1570,22 +1586,14 @@ class PresentationWindow:
             text_label.pack(expand=True, fill=tk.BOTH)
             self.lang_texts.append(text_label)
             
-            # Separator (except after last language)
+            # Separator (except after last language) - subtle
             if i < len(self.language_names) - 1:
-                separator = tk.Frame(main_frame, bg='#333333', height=2)
-                separator.pack(fill=tk.X, pady=10)
+                separator = tk.Frame(main_frame, bg='#222222', height=1)
+                separator.pack(fill=tk.X, pady=15)
         
-        # Small hint at bottom (can be removed for production)
-        hint_label = tk.Label(
-            self.window,
-            text="Press F5 on main window to close | Press F11 to toggle fullscreen",
-            font=font.Font(family="Arial", size=10),
-            fg='#444444',
-            bg='black'
-        )
-        hint_label.pack(side=tk.BOTTOM, pady=5)
+        # NO hint label - clean display for congregation
         
-        # Bind F11 for fullscreen toggle on this window
+        # Bind F11 for fullscreen toggle on this window (operator can still use)
         self.window.bind('<F11>', self.toggle_fullscreen)
         self.is_fullscreen = False
         
@@ -1598,33 +1606,23 @@ class PresentationWindow:
         primary_width = parent_root.winfo_screenwidth()
         primary_height = parent_root.winfo_screenheight()
         
-        # Try to detect if there's extended desktop space
-        # This is a heuristic - Tkinter doesn't have great multi-monitor support
-        # We'll position the window to the right of the primary monitor
+        print(f"    Primary monitor detected: {primary_width}x{primary_height}")
         
-        # Start with a large window size
+        # Start with a reasonable window size
         window_width = int(primary_width * 0.8)
         window_height = int(primary_height * 0.6)
         
-        # Position: try second monitor (right of primary)
-        # If no second monitor, this will just be off-screen and user can drag it
-        x_position = primary_width + 50  # Just past the primary monitor
-        y_position = 50
+        # ALWAYS start on primary monitor (visible) - user can drag to second monitor
+        # This ensures the window is never created off-screen
+        x_position = (primary_width - window_width) // 2
+        y_position = (primary_height - window_height) // 2
         
-        # Set geometry
+        # Set geometry on primary monitor
         self.window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         
-        # If window ends up off-screen (no second monitor), center on primary
-        self.window.update_idletasks()
-        actual_x = self.window.winfo_x()
-        
-        # If the window is positioned beyond reasonable bounds, center it
-        if actual_x > primary_width * 2 or actual_x < 0:
-            # Fall back to centering on primary monitor
-            x_position = (primary_width - window_width) // 2
-            y_position = (primary_height - window_height) // 2
-            self.window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
-            print("    Note: No second monitor detected - drag window to congregation display")
+        print(f"    Window positioned at: ({x_position}, {y_position})")
+        print(f"    Window size: {window_width}x{window_height}")
+        print("    Note: Drag window to congregation display/second monitor if needed")
     
     def toggle_fullscreen(self, event=None):
         """Toggle fullscreen mode"""
@@ -1642,18 +1640,93 @@ class PresentationWindow:
             self.window.attributes('-fullscreen', False)
     
     def update_text(self, translations, is_interim=False):
-        """Update displayed text
+        """Update displayed text with fade effect
         
         Args:
             translations: List of translated texts (one per language)
             is_interim: Whether this is interim (incomplete) text
         """
-        color = '#aaaaaa' if is_interim else 'white'
-        text_font = self.display_font_italic if is_interim else self.display_font
+        # Don't start a new fade if one is in progress
+        if self.is_fading:
+            # Just update the text directly if already fading
+            text_font = self.display_font if is_interim else self.display_font
+            for i, text_label in enumerate(self.lang_texts):
+                text = translations[i] if i < len(translations) else ""
+                text_label.config(text=text, font=text_font)
+            return
         
-        for i, text_label in enumerate(self.lang_texts):
-            text = translations[i] if i < len(translations) else ""
-            text_label.config(text=text, fg=color, font=text_font)
+        # Start fade transition in a thread to not block
+        import threading
+        fade_thread = threading.Thread(
+            target=self._fade_transition,
+            args=(translations, is_interim),
+            daemon=True
+        )
+        fade_thread.start()
+    
+    def _fade_transition(self, translations, is_interim):
+        """Perform fade out then fade in transition"""
+        self.is_fading = True
+        
+        try:
+            # Determine font style
+            text_font = self.display_font if is_interim else self.display_font
+            
+            if self.fade_duration <= 0:
+                # No fade - instant update
+                for i, text_label in enumerate(self.lang_texts):
+                    text = translations[i] if i < len(translations) else ""
+                    self.window.after(0, lambda l=text_label, t=text, f=text_font: l.config(text=t, fg='white', font=f))
+                return
+            
+            fade_steps = 8  # Slightly fewer steps for smoother performance
+            fade_delay = self.fade_duration / fade_steps / 2  # Divide by 2 for out+in
+            
+            # Fade OUT current text
+            for step in range(fade_steps, -1, -1):
+                alpha = step / fade_steps
+                brightness = int(255 * alpha)
+                color = f'#{brightness:02x}{brightness:02x}{brightness:02x}'
+                
+                for text_label in self.lang_texts:
+                    try:
+                        self.window.after(0, lambda l=text_label, c=color: l.config(fg=c))
+                    except:
+                        pass
+                time.sleep(fade_delay)
+            
+            # Update text while faded out
+            for i, text_label in enumerate(self.lang_texts):
+                text = translations[i] if i < len(translations) else ""
+                try:
+                    self.window.after(0, lambda l=text_label, t=text, f=text_font: l.config(text=t, fg='#000000', font=f))
+                except:
+                    pass
+            
+            # Small pause at black
+            time.sleep(0.05)
+            
+            # Fade IN new text
+            for step in range(fade_steps + 1):
+                alpha = step / fade_steps
+                brightness = int(255 * alpha)
+                color = f'#{brightness:02x}{brightness:02x}{brightness:02x}'
+                
+                for text_label in self.lang_texts:
+                    try:
+                        self.window.after(0, lambda l=text_label, c=color: l.config(fg=c))
+                    except:
+                        pass
+                time.sleep(fade_delay)
+                
+        except Exception as e:
+            print(f"    Presentation fade error: {e}")
+        finally:
+            self.is_fading = False
+    
+    def set_fade_duration(self, duration):
+        """Update fade duration (synced from main display config)"""
+        self.fade_duration = duration
     
     def set_font_size(self, size):
         """Update font size (synced from main window)"""
